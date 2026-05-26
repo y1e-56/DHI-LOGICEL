@@ -1,0 +1,227 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router';
+import { useAuth } from '../contexts/AuthContext';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { TestTube, ShieldCheck, Bell, BarChart3, Eye, EyeOff, AlertCircle } from 'lucide-react';
+
+export function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!email || !password) {
+      setError('Veuillez remplir tous les champs');
+      return;
+    }
+
+    setLoading(true);
+    await new Promise(r => setTimeout(r, 300));
+    const result = login(email, password);
+    setLoading(false);
+
+    if (result.success) {
+      navigate('/dashboard');
+    } else {
+      setError(result.message || 'Identifiants incorrects');
+    }
+  };
+
+  const demoAccounts = [
+    { role: 'Admin', email: 'admin@test.fr', password: 'admin123', color: 'bg-purple-500' },
+    { role: 'Chef testeur', email: 'chef@test.fr', password: 'chef123', color: 'bg-sky-500' },
+    { role: 'Testeur', email: 'testeur@test.fr', password: 'testeur123', color: 'bg-emerald-500' },
+    { role: 'Développeur', email: 'dev@test.fr', password: 'dev123', color: 'bg-amber-500' },
+  ];
+
+  const features = [
+    { icon: ShieldCheck, label: 'Gestion des anomalies', desc: 'Suivi complet du cycle de vie' },
+    { icon: Bell, label: 'Notifications en temps réel', desc: 'Alertes directes entre équipes' },
+    { icon: BarChart3, label: 'Reporting avancé', desc: 'Export PDF et Excel' },
+  ];
+
+  return (
+    <div className="min-h-screen flex">
+      <div
+        className="hidden lg:flex lg:w-2/5 flex-col justify-between p-10 relative overflow-hidden"
+        style={{ background: '#0F172A' }}
+      >
+        <div
+          className="absolute inset-0 opacity-30"
+          style={{
+            backgroundImage:
+              'radial-gradient(ellipse at 20% 50%, #4F46E5 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, #0EA5E9 0%, transparent 50%)',
+          }}
+        />
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-16">
+            <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center">
+              <TestTube className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <div className="font-bold text-white text-lg tracking-tight">QualityTrack</div>
+              <div className="text-white/30 text-[10px] font-mono tracking-widest">v2.0</div>
+            </div>
+          </div>
+
+          <div className="mb-12">
+            <h1 className="text-3xl font-bold text-white leading-tight mb-4">
+              Maîtrisez la qualité<br />de vos logiciels
+            </h1>
+            <p className="text-white/50 text-sm leading-relaxed">
+              Plateforme unifiée de suivi des tests, gestion des anomalies et reporting pour vos équipes.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {features.map(({ icon: Icon, label, desc }) => (
+              <div key={label} className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <Icon className="w-4 h-4 text-indigo-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-white/90">{label}</div>
+                  <div className="text-xs text-white/40 mt-0.5">{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="relative z-10">
+          <div className="w-full h-px mb-6" style={{ background: 'rgba(255,255,255,0.08)' }} />
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-xl font-bold text-white">4</div>
+              <div className="text-white/40 text-[10px] uppercase tracking-wider mt-0.5">Rôles</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-white">10</div>
+              <div className="text-white/40 text-[10px] uppercase tracking-wider mt-0.5">Écrans</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-white">∞</div>
+              <div className="text-white/40 text-[10px] uppercase tracking-wider mt-0.5">Projets</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 flex items-center justify-center p-6" style={{ background: '#F0F4F8' }}>
+        <div className="w-full max-w-sm">
+          <div className="lg:hidden flex items-center gap-2 mb-8">
+            <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
+              <TestTube className="w-4 h-4 text-white" />
+            </div>
+            <span className="font-bold text-slate-800">QualityTrack</span>
+          </div>
+
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-slate-900">Connexion</h2>
+            <p className="text-slate-500 text-sm mt-1">Accédez à votre espace de travail</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="flex items-start gap-2.5 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Identifiant
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="nom@exemple.fr"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                autoComplete="email"
+                className="h-10 bg-white border-slate-200 text-slate-900 focus:border-indigo-400"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Mot de passe
+              </Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className="h-10 bg-white border-slate-200 text-slate-900 focus:border-indigo-400 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Connexion...
+                </span>
+              ) : (
+                'Se connecter'
+              )}
+            </button>
+          </form>
+
+          <div className="mt-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-[10px] text-slate-400 font-mono tracking-widest">COMPTES DÉMO</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {demoAccounts.map(account => (
+                <button
+                  key={account.role}
+                  type="button"
+                  onClick={() => { setEmail(account.email); setPassword(account.password); }}
+                  className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50/50 transition-all text-left group"
+                >
+                  <div className={`w-5 h-5 ${account.color} rounded-full flex-shrink-0`} />
+                  <span className="text-xs font-semibold text-slate-600 group-hover:text-indigo-700 truncate">
+                    {account.role}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="text-center text-[10px] text-slate-400 mt-3">
+              Cliquer pour remplir automatiquement les champs
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
