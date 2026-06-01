@@ -1,61 +1,26 @@
-const { verifyToken } = require('../utils/jwt');
-const User = require('../models/User');
+import jwt from 'jsonwebtoken';
+import pool from '../config/database.js';
 
-// Middleware d'authentification
-const authenticate = async (req, res, next) => {
-  try {
-    // Récupérer le token depuis le header Authorization
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Token d\'authentification manquant' });
-    }
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
-    const token = authHeader.substring(7); // Enlever 'Bearer '
-    
-    // Vérifier le token
-    const decoded = verifyToken(token);
-    
-    if (!decoded) {
-      return res.status(401).json({ message: 'Token invalide ou expiré' });
-    }
-
-    // Récupérer l'utilisateur depuis la base de données
-    const user = await User.findById(decoded.userId);
-    
-    if (!user) {
-      return res.status(401).json({ message: 'Utilisateur non trouvé' });
-    }
-
-    if (!user.is_active) {
-      return res.status(401).json({ message: 'Compte désactivé' });
-    }
-
-    // Ajouter l'utilisateur à la requête
-    req.user = user;
-    next();
-  } catch (error) {
-    console.error('Erreur d\'authentification:', error);
-    res.status(500).json({ message: 'Erreur lors de l\'authentification' });
+export async function authenticate(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({ message: 'Token manquant' });
+    return;
   }
-};
 
-// Middleware pour vérifier les rôles
-const authorize = (...allowedRoles) => {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({ message: 'Non authentifié' });
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const result = await pool.query('SELECT id, email, first_name, last_name, role, created_at FROM users WHERE id = $1', [decoded.userId]);
+    if (result.rows.length === 0) {
+      res.status(401).json({ message: 'Utilisateur non trouvé' });
+      return;
     }
-
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ message: 'Accès non autorisé' });
-    }
-
+    req.user = result.rows[0];
     next();
-  };
-};
-
-module.exports = {
-  authenticate,
-  authorize
-};
+  } catch {
+    res.status(401).json({ message: 'Token invalide ou expiré' });
+  }
+}

@@ -1,24 +1,35 @@
-const { Pool } = require('pg');
-require('dotenv').config();
+import pg from 'pg';
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'dhi_test_tracking',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Test de connexion
-pool.on('connect', () => {
-  console.log('Connecté à la base de données PostgreSQL');
+dotenv.config();
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
 });
 
 pool.on('error', (err) => {
-  console.error('Erreur de connexion à la base de données:', err);
+  console.error('Unexpected error on idle client', err);
+  process.exit(-1);
 });
 
-module.exports = pool;
+export async function initDb() {
+  const client = await pool.connect();
+  try {
+    const migrationPath = path.join(__dirname, '../../migrations/001_init.sql');
+    const sql = fs.readFileSync(migrationPath, 'utf-8');
+    await client.query(sql);
+    console.log('Database initialized successfully');
+  } catch (err) {
+    console.error('Failed to initialize database:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export default pool;
