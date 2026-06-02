@@ -11,6 +11,8 @@ interface AuthContextType {
   bloquerUtilisateur: (id: string) => void;
   debloquerUtilisateur: (id: string) => void;
   creerUtilisateur: (user: Omit<User, 'id' | 'tentativesEchouees'>) => void;
+  supprimerUtilisateur: (id: string) => void;
+  restaurerUtilisateur: (id: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,6 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!user) {
       return { success: false, message: 'Email ou mot de passe incorrect' };
+    }
+
+    if (user.dateSuppression) {
+      return { success: false, message: 'Ce compte a été supprimé' };
     }
 
     if (user.bloqueJusqua && new Date(user.bloqueJusqua) > new Date()) {
@@ -111,6 +117,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUsers(prev => [...prev, newUser]);
   };
 
+  const supprimerUtilisateur = (id: string) => {
+    setUsers(prev => prev.map(u => 
+      u.id === id ? { ...u, dateSuppression: new Date().toISOString() } : u
+    ));
+  };
+
+  const restaurerUtilisateur = (id: string) => {
+    setUsers(prev => prev.map(u => 
+      u.id === id ? { ...u, dateSuppression: undefined } : u
+    ));
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -122,6 +140,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         bloquerUtilisateur,
         debloquerUtilisateur,
         creerUtilisateur,
+        supprimerUtilisateur,
+        restaurerUtilisateur,
       }}
     >
       {children}

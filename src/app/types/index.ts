@@ -15,6 +15,7 @@ export interface User {
   password: string;
   bloqueJusqua?: Date;
   tentativesEchouees: number;
+  dateSuppression?: string;
 }
 
 export interface Projet {

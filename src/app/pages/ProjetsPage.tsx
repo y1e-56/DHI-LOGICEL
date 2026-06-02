@@ -10,12 +10,12 @@ import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Plus, Archive, Edit, FolderKanban } from 'lucide-react';
+import { Plus, Archive, Edit, FolderKanban, Trash2, Calendar } from 'lucide-react';
 import { Projet } from '../types';
 
 export function ProjetsPage() {
   const { currentUser } = useAuth();
-  const { projets, ajouterProjet, modifierProjet, archiverProjet } = useData();
+  const { projets, ajouterProjet, modifierProjet, archiverProjet, supprimerProjet } = useData();
   const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProjet, setEditingProjet] = useState<Projet | null>(null);
@@ -24,6 +24,11 @@ export function ProjetsPage() {
   const [formData, setFormData] = useState({
     nom: '',
     description: '',
+    dateDebut: '',
+    dateFin: ''
+  });
+  const [errors, setErrors] = useState({
+    nom: '',
     dateDebut: '',
     dateFin: ''
   });
@@ -54,11 +59,35 @@ export function ProjetsPage() {
         dateFin: ''
       });
     }
+    setErrors({ nom: '', dateDebut: '', dateFin: '' });
     setDialogOpen(true);
   };
 
+  const validateForm = () => {
+    const newErrors = {
+      nom: '',
+      dateDebut: '',
+      dateFin: ''
+    };
+
+    if (!formData.nom.trim()) {
+      newErrors.nom = 'Le nom du projet est requis';
+    }
+    if (!formData.dateDebut) {
+      newErrors.dateDebut = 'La date de début est requise';
+    }
+    if (!formData.dateFin) {
+      newErrors.dateFin = 'La date de fin est requise';
+    } else if (formData.dateDebut && formData.dateFin < formData.dateDebut) {
+      newErrors.dateFin = 'La date de fin doit être après la date de début';
+    }
+
+    setErrors(newErrors);
+    return !newErrors.nom && !newErrors.dateDebut && !newErrors.dateFin;
+  };
+
   const handleSubmit = () => {
-    if (!formData.nom || !formData.dateDebut || !formData.dateFin) {
+    if (!validateForm()) {
       return;
     }
 
@@ -77,6 +106,7 @@ export function ProjetsPage() {
 
     setDialogOpen(false);
     setFormData({ nom: '', description: '', dateDebut: '', dateFin: '' });
+    setErrors({ nom: '', dateDebut: '', dateFin: '' });
   };
 
   const projetsFiltered = projets.filter(p => {
@@ -113,9 +143,14 @@ export function ProjetsPage() {
                 <Input
                   id="nom"
                   value={formData.nom}
-                  onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, nom: e.target.value });
+                    if (errors.nom) setErrors({ ...errors, nom: '' });
+                  }}
                   placeholder="Ex: Application E-Commerce"
+                  className={errors.nom ? 'border-red-500 focus:border-red-500' : ''}
                 />
+                {errors.nom && <p className="text-sm text-red-500">{errors.nom}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
@@ -130,21 +165,37 @@ export function ProjetsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="dateDebut">Date de début *</Label>
-                  <Input
-                    id="dateDebut"
-                    type="date"
-                    value={formData.dateDebut}
-                    onChange={(e) => setFormData({ ...formData, dateDebut: e.target.value })}
-                  />
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      id="dateDebut"
+                      type="date"
+                      value={formData.dateDebut}
+                      onChange={(e) => {
+                        setFormData({ ...formData, dateDebut: e.target.value });
+                        if (errors.dateDebut) setErrors({ ...errors, dateDebut: '' });
+                      }}
+                      className={`pl-10 ${errors.dateDebut ? 'border-red-500 focus:border-red-500' : 'border-indigo-200 focus:border-indigo-400'}`}
+                    />
+                  </div>
+                  {errors.dateDebut && <p className="text-sm text-red-500">{errors.dateDebut}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dateFin">Date de fin *</Label>
-                  <Input
-                    id="dateFin"
-                    type="date"
-                    value={formData.dateFin}
-                    onChange={(e) => setFormData({ ...formData, dateFin: e.target.value })}
-                  />
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      id="dateFin"
+                      type="date"
+                      value={formData.dateFin}
+                      onChange={(e) => {
+                        setFormData({ ...formData, dateFin: e.target.value });
+                        if (errors.dateFin) setErrors({ ...errors, dateFin: '' });
+                      }}
+                      className={`pl-10 ${errors.dateFin ? 'border-red-500 focus:border-red-500' : 'border-indigo-200 focus:border-indigo-400'}`}
+                    />
+                  </div>
+                  {errors.dateFin && <p className="text-sm text-red-500">{errors.dateFin}</p>}
                 </div>
               </div>
             </div>
@@ -233,6 +284,18 @@ export function ProjetsPage() {
                     <Archive className="w-4 h-4" />
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (confirm(`Êtes-vous sûr de vouloir supprimer le projet "${projet.nom}" ?`)) {
+                      supprimerProjet(projet.id);
+                    }
+                  }}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </div>
             </CardContent>
           </Card>

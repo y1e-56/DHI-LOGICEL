@@ -29,6 +29,8 @@ export function CampagneDetailPage() {
   } = useData();
   const navigate = useNavigate();
 
+  const isAdmin = currentUser?.role === 'admin';
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [ajoutMembreDialogOpen, setAjoutMembreDialogOpen] = useState(false);
@@ -56,6 +58,7 @@ export function CampagneDetailPage() {
 
   const handleChangerStatutCampagne = (statut: 'en_cours' | 'terminee') => {
     if (!campagneId) return;
+  
     modifierCampagne(campagneId, { statut });
   };
 
@@ -125,6 +128,18 @@ export function CampagneDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-gray-500">Campagne introuvable</p>
+      </div>
+    );
+  }
+
+  // Vérifier les droits d'accès
+  const canEdit = currentUser.role === 'chef_testeur' && campagne.chefTesteurId === currentUser.id;
+  const canView = canEdit || currentUser.role === 'admin';
+
+  if (!canView) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">Accès non autorisé</p>
       </div>
     );
   }
@@ -207,7 +222,7 @@ export function CampagneDetailPage() {
     return config[priorite as keyof typeof config];
   };
 
-  const peutGerer = currentUser.role === 'chef_testeur';
+  const peutGerer = canEdit;
 
   return (
     <div className="space-y-6">

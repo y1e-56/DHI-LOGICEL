@@ -4,6 +4,9 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ProjetsPage } from './pages/ProjetsPage';
 import { CampagnesPage } from './pages/CampagnesPage';
 import { AdminUtilisateursPage } from './pages/AdminUtilisateursPage';
+import { AdminHistoryPage } from './pages/AdminHistoryPage';
+import { AdminAllAnomaliesPage } from './pages/AdminAllAnomaliesPage';
+import { AdminAssignationPage } from './pages/AdminAssignationPage';
 import { CampagneDetailPage } from './pages/CampagneDetailPage';
 import { TesteurTachesPage } from './pages/TesteurTachesPage';
 import { DeveloppeurAnomaliesPage } from './pages/DeveloppeurAnomaliesPage';
@@ -63,6 +66,30 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <AdminUtilisateursPage />
+      </ProtectedRoute>
+    )
+  },
+  {
+    path: '/admin/history',
+    element: (
+      <ProtectedRoute>
+        <AdminHistoryPage />
+      </ProtectedRoute>
+    )
+  },
+  {
+    path: '/admin/anomalies',
+    element: (
+      <ProtectedRoute>
+        <AdminAllAnomaliesPage />
+      </ProtectedRoute>
+    )
+  },
+  {
+    path: '/admin/assignation',
+    element: (
+      <ProtectedRoute>
+        <AdminAssignationPage />
       </ProtectedRoute>
     )
   },

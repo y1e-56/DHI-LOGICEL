@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
-import { Users, ShieldOff, ShieldCheck, Plus, Search, UserCog } from 'lucide-react';
+import { Users, ShieldOff, ShieldCheck, Plus, Search, UserCog, Trash2, RotateCcw, Archive } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { toast } from 'sonner';
 
@@ -26,11 +26,13 @@ const roleAccent: Record<UserRole, string> = {
 };
 
 export function AdminUtilisateursPage() {
-  const { currentUser, users, bloquerUtilisateur, debloquerUtilisateur, creerUtilisateur } = useAuth();
+  const { currentUser, users, bloquerUtilisateur, debloquerUtilisateur, creerUtilisateur, supprimerUtilisateur, restaurerUtilisateur } = useAuth();
   const [recherche, setRecherche] = useState('');
   const [filtreRole, setFiltreRole] = useState<UserRole | 'tous'>('tous');
+  const [filtreStatut, setFiltreStatut] = useState<'actifs' | 'supprimes'>('actifs');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newUser, setNewUser] = useState({ prenom: '', nom: '', email: '', role: 'testeur' as UserRole, password: '' });
+  const [errors, setErrors] = useState({ prenom: '', nom: '', email: '', password: '' });
 
   if (!currentUser || currentUser.role !== 'admin') {
     return (
@@ -44,25 +46,57 @@ export function AdminUtilisateursPage() {
   const estBloque = (user: User) =>
     !!(user.bloqueJusqua && new Date(user.bloqueJusqua) > new Date());
 
+  const estSupprime = (user: User) => !!user.dateSuppression;
+
   const utilisateursFiltres = users.filter(u => {
     const matchRecherche =
       !recherche ||
       `${u.prenom} ${u.nom} ${u.email}`.toLowerCase().includes(recherche.toLowerCase());
     const matchRole = filtreRole === 'tous' || u.role === filtreRole;
-    return matchRecherche && matchRole;
+    const matchStatut = filtreStatut === 'actifs' ? !estSupprime(u) : estSupprime(u);
+    return matchRecherche && matchRole && matchStatut;
   });
 
   const stats = {
     total: users.length,
-    actifs: users.filter(u => !estBloque(u)).length,
-    bloques: users.filter(u => estBloque(u)).length,
+    actifs: users.filter(u => !estSupprime(u)).length,
+    supprimes: users.filter(u => estSupprime(u)).length,
+    bloques: users.filter(u => estBloque(u) && !estSupprime(u)).length,
   };
 
   const roleGroups: UserRole[] = ['admin', 'chef_testeur', 'testeur', 'developpeur'];
   const countByRole = (role: UserRole) => users.filter(u => u.role === role).length;
 
   const handleCreateUser = () => {
-    if (!newUser.prenom || !newUser.nom || !newUser.email || !newUser.password) return;
+    const newErrors = {
+      prenom: '',
+      nom: '',
+      email: '',
+      password: ''
+    };
+
+    if (!newUser.prenom.trim()) {
+      newErrors.prenom = 'Le prénom est requis';
+    }
+    if (!newUser.nom.trim()) {
+      newErrors.nom = 'Le nom est requis';
+    }
+    if (!newUser.email.trim()) {
+      newErrors.email = 'L\'email est requis';
+    } else if (!newUser.email.includes('@')) {
+      newErrors.email = 'L\'email doit être valide';
+    }
+    if (!newUser.password) {
+      newErrors.password = 'Le mot de passe est requis';
+    } else if (newUser.password.length < 6) {
+      newErrors.password = 'Le mot de passe doit contenir au moins 6 caractères';
+    }
+
+    setErrors(newErrors);
+
+    if (newErrors.prenom || newErrors.nom || newErrors.email || newErrors.password) {
+      return;
+    }
 
     creerUtilisateur({
       prenom: newUser.prenom,
@@ -74,6 +108,7 @@ export function AdminUtilisateursPage() {
 
     toast.success(`Compte créé pour ${newUser.prenom} ${newUser.nom}`);
     setNewUser({ prenom: '', nom: '', email: '', role: 'testeur' as UserRole, password: '' });
+    setErrors({ prenom: '', nom: '', email: '', password: '' });
     setDialogOpen(false);
   };
 
@@ -101,19 +136,27 @@ export function AdminUtilisateursPage() {
                   <Label className="text-xs font-bold uppercase tracking-wider text-slate-400">Prénom *</Label>
                   <Input
                     value={newUser.prenom}
-                    onChange={e => setNewUser({ ...newUser, prenom: e.target.value })}
+                    onChange={e => {
+                      setNewUser({ ...newUser, prenom: e.target.value });
+                      if (errors.prenom) setErrors({ ...errors, prenom: '' });
+                    }}
                     placeholder="Prénom"
-                    className="bg-white border-slate-200"
+                    className={`bg-white ${errors.prenom ? 'border-red-500 focus:border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.prenom && <p className="text-xs text-red-500">{errors.prenom}</p>}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold uppercase tracking-wider text-slate-400">Nom *</Label>
                   <Input
                     value={newUser.nom}
-                    onChange={e => setNewUser({ ...newUser, nom: e.target.value })}
+                    onChange={e => {
+                      setNewUser({ ...newUser, nom: e.target.value });
+                      if (errors.nom) setErrors({ ...errors, nom: '' });
+                    }}
                     placeholder="Nom"
-                    className="bg-white border-slate-200"
+                    className={`bg-white ${errors.nom ? 'border-red-500 focus:border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.nom && <p className="text-xs text-red-500">{errors.nom}</p>}
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -121,20 +164,28 @@ export function AdminUtilisateursPage() {
                 <Input
                   type="email"
                   value={newUser.email}
-                  onChange={e => setNewUser({ ...newUser, email: e.target.value })}
+                  onChange={e => {
+                    setNewUser({ ...newUser, email: e.target.value });
+                    if (errors.email) setErrors({ ...errors, email: '' });
+                  }}
                   placeholder="nom@exemple.fr"
-                  className="bg-white border-slate-200"
+                  className={`bg-white ${errors.email ? 'border-red-500 focus:border-red-500' : 'border-slate-200'}`}
                 />
+                {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold uppercase tracking-wider text-slate-400">Mot de passe *</Label>
                 <Input
                   type="password"
                   value={newUser.password}
-                  onChange={e => setNewUser({ ...newUser, password: e.target.value })}
+                  onChange={e => {
+                    setNewUser({ ...newUser, password: e.target.value });
+                    if (errors.password) setErrors({ ...errors, password: '' });
+                  }}
                   placeholder="••••••••"
-                  className="bg-white border-slate-200"
+                  className={`bg-white ${errors.password ? 'border-red-500 focus:border-red-500' : 'border-slate-200'}`}
                 />
+                {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold uppercase tracking-wider text-slate-400">Rôle *</Label>
@@ -190,6 +241,13 @@ export function AdminUtilisateursPage() {
             <p className="text-3xl font-bold text-red-600 mt-1">{stats.bloques}</p>
           </CardContent>
         </Card>
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <div className="h-0.5 bg-gray-500" />
+          <CardContent className="pt-4 pb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Supprimés</p>
+            <p className="text-3xl font-bold text-gray-600 mt-1">{stats.supprimes}</p>
+          </CardContent>
+        </Card>
         <Card className="border-0 shadow-sm">
           <CardContent className="pt-4 pb-4">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Par rôle</p>
@@ -232,6 +290,15 @@ export function AdminUtilisateursPage() {
                 <SelectItem value="developpeur">Développeur</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={filtreStatut} onValueChange={(v: 'actifs' | 'supprimes') => setFiltreStatut(v)}>
+              <SelectTrigger className="w-44 bg-white border-slate-200 h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="actifs">Actifs</SelectItem>
+                <SelectItem value="supprimes">Supprimés</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-5">
@@ -244,6 +311,7 @@ export function AdminUtilisateursPage() {
             )}
             {utilisateursFiltres.map(user => {
               const bloque = estBloque(user);
+              const supprime = estSupprime(user);
               const rc = roleConfig[user.role];
               const isCurrentUser = user.id === currentUser.id;
 
@@ -251,10 +319,10 @@ export function AdminUtilisateursPage() {
                 <div
                   key={user.id}
                   className={`flex items-center gap-4 p-3.5 rounded-xl border transition-colors ${
-                    bloque ? 'bg-red-50/50 border-red-100' : 'bg-white border-slate-100 hover:border-slate-200'
+                    supprime ? 'bg-gray-50/50 border-gray-200' : bloque ? 'bg-red-50/50 border-red-100' : 'bg-white border-slate-100 hover:border-slate-200'
                   }`}
                 >
-                  <div className={`w-9 h-9 ${roleAccent[user.role]} rounded-full flex items-center justify-center flex-shrink-0`}>
+                  <div className={`w-9 h-9 ${roleAccent[user.role]} rounded-full flex items-center justify-center flex-shrink-0 ${supprime ? 'opacity-50' : ''}`}>
                     <span className="text-xs font-bold text-white">
                       {user.prenom[0]}{user.nom[0]}
                     </span>
@@ -262,7 +330,7 @@ export function AdminUtilisateursPage() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-slate-800">
+                      <span className={`text-sm font-semibold ${supprime ? 'text-gray-500' : 'text-slate-800'}`}>
                         {user.prenom} {user.nom}
                       </span>
                       {isCurrentUser && (
@@ -270,7 +338,12 @@ export function AdminUtilisateursPage() {
                           Moi
                         </Badge>
                       )}
-                      {bloque && (
+                      {supprime && (
+                        <Badge className="bg-gray-200 text-gray-700 border-gray-300 text-[10px] px-1.5 py-0 border">
+                          Supprimé
+                        </Badge>
+                      )}
+                      {bloque && !supprime && (
                         <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] px-1.5 py-0 border">
                           Bloqué
                         </Badge>
@@ -278,36 +351,73 @@ export function AdminUtilisateursPage() {
                     </div>
                     <div className="flex items-center gap-3 mt-0.5">
                       <span className="text-xs text-slate-400 font-mono truncate">{user.email}</span>
+                      {supprime && user.dateSuppression && (
+                        <span className="text-xs text-gray-400">
+                          Supprimé le {new Date(user.dateSuppression).toLocaleDateString('fr-FR')}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <Badge className={`${rc.bg} ${rc.color} border text-xs px-2 py-0.5 hidden sm:flex`}>
+                    <Badge className={`${rc.bg} ${rc.color} border text-xs px-2 py-0.5 hidden sm:flex ${supprime ? 'opacity-50' : ''}`}>
                       {rc.label}
                     </Badge>
 
                     {!isCurrentUser && (
-                      bloque ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => debloquerUtilisateur(user.id)}
-                          className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 h-8 text-xs"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          Débloquer
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => bloquerUtilisateur(user.id)}
-                          className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 h-8 text-xs"
-                        >
-                          <ShieldOff className="w-3.5 h-3.5" />
-                          Bloquer
-                        </Button>
-                      )
+                      <div className="flex items-center gap-2">
+                        {supprime ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              restaurerUtilisateur(user.id);
+                              toast.success('Utilisateur restauré');
+                            }}
+                            className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 h-8 text-xs"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Restaurer
+                          </Button>
+                        ) : (
+                          <>
+                            {bloque ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => debloquerUtilisateur(user.id)}
+                                className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 h-8 text-xs"
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                Débloquer
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => bloquerUtilisateur(user.id)}
+                                className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 h-8 text-xs"
+                              >
+                                <ShieldOff className="w-3.5 h-3.5" />
+                                Bloquer
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                if (confirm(`Êtes-vous sûr de vouloir supprimer ${user.prenom} ${user.nom} ?`)) {
+                                  supprimerUtilisateur(user.id);
+                                  toast.success('Utilisateur supprimé');
+                                }
+                              }}
+                              className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 h-8 text-xs"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

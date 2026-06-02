@@ -11,6 +11,7 @@ import { StatutAnomalie } from '../types';
 
 export function DeveloppeurAnomaliesPage() {
   const { currentUser, users } = useAuth();
+  const isAdmin = currentUser?.role === 'admin';
   const { anomalies, fonctionnalites, campagnes, projets, changerStatutAnomalie } = useData();
   const navigate = useNavigate();
   const [filtreStatut, setFiltreStatut] = useState<StatutAnomalie | 'tous'>('tous');
@@ -20,15 +21,18 @@ export function DeveloppeurAnomaliesPage() {
     changerStatutAnomalie(anomalieId, 'en_cours', currentUser.id);
   };
 
-  if (!currentUser || currentUser.role !== 'developpeur') {
+  if (!currentUser || (currentUser.role !== 'developpeur' && currentUser.role !== 'admin')) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">Accès réservé aux développeurs</p>
+        <p className="text-gray-500">Accès réservé aux développeurs et administrateurs</p>
       </div>
     );
   }
 
-  const mesAnomalies = anomalies.filter(a => a.developpeurId === currentUser.id);
+  // Pour l'admin, voir toutes les anomalies. Pour le développeur, voir seulement les siennes
+  const mesAnomalies = currentUser.role === 'admin'
+    ? anomalies
+    : anomalies.filter(a => a.developpeurId === currentUser.id);
   
   const anomaliesFiltrees = mesAnomalies.filter(a => {
     if (filtreStatut === 'tous') return true;
@@ -188,6 +192,7 @@ export function DeveloppeurAnomaliesPage() {
                               e.stopPropagation();
                               handlePrendreEnCharge(anomalie.id);
                             }}
+                            disabled={isAdmin}
                           >
                             <Play className="w-4 h-4" />
                             Prendre en charge

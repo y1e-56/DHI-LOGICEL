@@ -22,11 +22,11 @@ export function ReportingPage() {
   const { campagnes, projets, fonctionnalites, anomalies } = useData();
   const [campagneSelectionnee, setCampagneSelectionnee] = useState<string>('');
 
-  if (!currentUser || currentUser.role !== 'chef_testeur') {
+  if (!currentUser || (currentUser.role !== 'chef_testeur' && currentUser.role !== 'admin')) {
     return (
       <div className="text-center py-20">
         <BarChart3 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-        <p className="text-slate-500">Accès réservé aux chefs testeurs</p>
+        <p className="text-slate-500">Accès réservé aux chefs testeurs et administrateurs</p>
       </div>
     );
   }

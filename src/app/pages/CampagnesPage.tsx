@@ -30,11 +30,20 @@ export function CampagnesPage() {
     equipeTesteurs: [] as string[],
     equipeDeveloppeurs: [] as string[]
   });
+  const [errors, setErrors] = useState({
+    nom: '',
+    projetId: '',
+    dateDebut: '',
+    dateFin: ''
+  });
 
-  if (!currentUser || currentUser.role !== 'chef_testeur') {
+  const isAdmin = currentUser?.role === 'admin';
+  const canEdit = currentUser?.role === 'chef_testeur';
+
+  if (!currentUser || (currentUser.role !== 'chef_testeur' && currentUser.role !== 'admin')) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">Accès réservé aux chefs testeurs</p>
+        <p className="text-gray-500">Accès réservé aux chefs testeurs et administrateurs</p>
       </div>
     );
   }
@@ -67,11 +76,39 @@ export function CampagnesPage() {
         equipeDeveloppeurs: []
       });
     }
+    setErrors({ nom: '', projetId: '', dateDebut: '', dateFin: '' });
     setDialogOpen(true);
   };
 
+  const validateForm = () => {
+    const newErrors = {
+      nom: '',
+      projetId: '',
+      dateDebut: '',
+      dateFin: ''
+    };
+
+    if (!formData.nom.trim()) {
+      newErrors.nom = 'Le nom de la campagne est requis';
+    }
+    if (!formData.projetId) {
+      newErrors.projetId = 'Le projet est requis';
+    }
+    if (!formData.dateDebut) {
+      newErrors.dateDebut = 'La date de début est requise';
+    }
+    if (!formData.dateFin) {
+      newErrors.dateFin = 'La date de fin est requise';
+    } else if (formData.dateDebut && formData.dateFin < formData.dateDebut) {
+      newErrors.dateFin = 'La date de fin doit être après la date de début';
+    }
+
+    setErrors(newErrors);
+    return !newErrors.nom && !newErrors.projetId && !newErrors.dateDebut && !newErrors.dateFin;
+  };
+
   const handleSubmit = () => {
-    if (!formData.nom || !formData.projetId || !formData.dateDebut || !formData.dateFin) {
+    if (!validateForm()) {
       return;
     }
 
@@ -89,6 +126,7 @@ export function CampagnesPage() {
     }
 
     setDialogOpen(false);
+    setErrors({ nom: '', projetId: '', dateDebut: '', dateFin: '' });
   };
 
   const toggleMembre = (userId: string, type: 'testeur' | 'developpeur') => {
@@ -116,13 +154,14 @@ export function CampagnesPage() {
           <h2 className="text-2xl font-semibold mb-1">Gestion des campagnes</h2>
           <p className="text-gray-500">Créer et gérer les campagnes de tests</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => handleOpenDialog()}>
-              <Plus className="w-4 h-4 mr-2" />
-              Nouvelle campagne
-            </Button>
-          </DialogTrigger>
+        {!isAdmin && (
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => handleOpenDialog()}>
+                <Plus className="w-4 h-4 mr-2" />
+                Nouvelle campagne
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
@@ -138,15 +177,23 @@ export function CampagnesPage() {
                 <Input
                   id="nom"
                   value={formData.nom}
-                  onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, nom: e.target.value });
+                    if (errors.nom) setErrors({ ...errors, nom: '' });
+                  }}
                   placeholder="Ex: Sprint 1 - Authentification"
+                  className={errors.nom ? 'border-red-500 focus:border-red-500' : ''}
                 />
+                {errors.nom && <p className="text-sm text-red-500">{errors.nom}</p>}
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="projetId">Projet *</Label>
-                <Select value={formData.projetId} onValueChange={(value) => setFormData({ ...formData, projetId: value })}>
-                  <SelectTrigger>
+                <Select value={formData.projetId} onValueChange={(value) => {
+                  setFormData({ ...formData, projetId: value });
+                  if (errors.projetId) setErrors({ ...errors, projetId: '' });
+                }}>
+                  <SelectTrigger className={errors.projetId ? 'border-red-500 focus:border-red-500' : ''}>
                     <SelectValue placeholder="Sélectionner un projet" />
                   </SelectTrigger>
                   <SelectContent>
@@ -157,6 +204,7 @@ export function CampagnesPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.projetId && <p className="text-sm text-red-500">{errors.projetId}</p>}
               </div>
 
               <div className="space-y-2">
@@ -173,21 +221,37 @@ export function CampagnesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="dateDebut">Date de début *</Label>
-                  <Input
-                    id="dateDebut"
-                    type="date"
-                    value={formData.dateDebut}
-                    onChange={(e) => setFormData({ ...formData, dateDebut: e.target.value })}
-                  />
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      id="dateDebut"
+                      type="date"
+                      value={formData.dateDebut}
+                      onChange={(e) => {
+                        setFormData({ ...formData, dateDebut: e.target.value });
+                        if (errors.dateDebut) setErrors({ ...errors, dateDebut: '' });
+                      }}
+                      className={`pl-10 ${errors.dateDebut ? 'border-red-500 focus:border-red-500' : 'border-indigo-200 focus:border-indigo-400'}`}
+                    />
+                  </div>
+                  {errors.dateDebut && <p className="text-sm text-red-500">{errors.dateDebut}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dateFin">Date de fin *</Label>
-                  <Input
-                    id="dateFin"
-                    type="date"
-                    value={formData.dateFin}
-                    onChange={(e) => setFormData({ ...formData, dateFin: e.target.value })}
-                  />
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      id="dateFin"
+                      type="date"
+                      value={formData.dateFin}
+                      onChange={(e) => {
+                        setFormData({ ...formData, dateFin: e.target.value });
+                        if (errors.dateFin) setErrors({ ...errors, dateFin: '' });
+                      }}
+                      className={`pl-10 ${errors.dateFin ? 'border-red-500 focus:border-red-500' : 'border-indigo-200 focus:border-indigo-400'}`}
+                    />
+                  </div>
+                  {errors.dateFin && <p className="text-sm text-red-500">{errors.dateFin}</p>}
                 </div>
               </div>
 
@@ -243,6 +307,7 @@ export function CampagnesPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

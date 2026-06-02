@@ -30,6 +30,7 @@ interface DataContextType {
   ajouterProjet: (projet: Projet) => void;
   modifierProjet: (id: string, projet: Partial<Projet>) => void;
   archiverProjet: (id: string) => void;
+  supprimerProjet: (id: string) => void;
   
   // Campagnes
   ajouterCampagne: (campagne: Campagne) => void;
@@ -76,6 +77,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const archiverProjet = (id: string) => {
     modifierProjet(id, { statut: 'archive' });
+  };
+
+  const supprimerProjet = (id: string) => {
+    setProjets(prev => prev.filter(p => p.id !== id));
   };
 
   // Campagnes
@@ -211,6 +216,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ajouterProjet,
     modifierProjet,
     archiverProjet,
+    supprimerProjet,
     
     ajouterCampagne,
     modifierCampagne,

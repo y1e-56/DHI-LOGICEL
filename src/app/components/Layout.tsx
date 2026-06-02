@@ -5,7 +5,7 @@ import { useData } from '../contexts/DataContext';
 import { useNavigate, useLocation } from 'react-router';
 import {
   Bell, LogOut, Menu, Home, FolderKanban, TestTube,
-  BarChart3, ChevronRight, Bug, Users
+  BarChart3, ChevronRight, Bug, Users, Sparkles
 } from 'lucide-react';
 import { Badge } from './ui/badge';
 import {
@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import { AIChatBox } from './AIChatBox';
 
 export function Layout({ children }: { children: ReactNode }) {
   const { currentUser, logout } = useAuth();
@@ -23,6 +24,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatBoxOpen, setChatBoxOpen] = useState(false);
 
   if (!currentUser) return <>{children}</>;
 
@@ -52,10 +54,13 @@ export function Layout({ children }: { children: ReactNode }) {
     { path: '/dashboard', label: 'Tableau de bord', icon: Home, roles: ['admin', 'chef_testeur', 'testeur', 'developpeur'] },
     { path: '/projets', label: 'Projets', icon: FolderKanban, roles: ['admin', 'chef_testeur'] },
     { path: '/admin/utilisateurs', label: 'Utilisateurs', icon: Users, roles: ['admin'] },
-    { path: '/campagnes', label: 'Campagnes', icon: TestTube, roles: ['chef_testeur'] },
-    { path: '/testeur/taches', label: 'Mes tâches', icon: TestTube, roles: ['testeur'] },
+    { path: '/admin/history', label: 'Historique', icon: BarChart3, roles: ['admin'] },
+    { path: '/admin/anomalies', label: 'Toutes anomalies', icon: Bug, roles: ['admin'] },
+    { path: '/admin/assignation', label: 'Assignation', icon: TestTube, roles: ['admin'] },
+    { path: '/campagnes', label: 'Campagnes', icon: TestTube, roles: ['admin', 'chef_testeur'] },
+    { path: '/testeur/taches', label: 'Mes tâches', icon: TestTube, roles: ['admin', 'testeur'] },
     { path: '/developpeur/anomalies', label: 'Mes anomalies', icon: Bug, roles: ['developpeur'] },
-    { path: '/reporting', label: 'Reporting', icon: BarChart3, roles: ['chef_testeur'] },
+    { path: '/reporting', label: 'Reporting', icon: BarChart3, roles: ['admin', 'chef_testeur'] },
   ];
 
   const navLinks = allNavLinks.filter(l => l.roles.includes(currentUser.role));
@@ -116,6 +121,18 @@ export function Layout({ children }: { children: ReactNode }) {
       </nav>
 
       <div className="px-2.5 pb-4 flex-shrink-0 border-t border-white/[0.08] pt-4 space-y-2">
+        <button
+          onClick={() => setChatBoxOpen(true)}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 text-left group ${
+            chatBoxOpen
+              ? 'bg-gradient-to-r from-purple-500/25 to-purple-500/10 text-white font-semibold shadow-lg shadow-purple-500/10 border border-purple-500/20'
+              : 'text-white/60 hover:bg-white/[0.06] hover:text-white/90'
+          }`}
+        >
+          <Sparkles className={`w-4 h-4 flex-shrink-0 transition-colors ${chatBoxOpen ? 'text-purple-300' : 'group-hover:text-white/80'}`} />
+          <span className="flex-1 truncate">Assistant IA</span>
+          {chatBoxOpen && <ChevronRight className="w-3.5 h-3.5 text-purple-300 flex-shrink-0" />}
+        </button>
         {notificationsNonLues.length > 0 && (
           <div className="flex items-center gap-2.5 px-3 py-2.5 bg-gradient-to-r from-indigo-500/15 to-indigo-500/5 rounded-xl border border-indigo-500/20">
             <Bell className="w-3.5 h-3.5 text-indigo-300 flex-shrink-0" />
@@ -257,6 +274,8 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
+
+      <AIChatBox open={chatBoxOpen} onClose={() => setChatBoxOpen(false)} />
     </div>
   );
 }

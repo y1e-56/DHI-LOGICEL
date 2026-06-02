@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { useNavigate } from 'react-router';
@@ -10,15 +10,18 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, AlertTriangle, Sparkles, UserCheck } from 'lucide-react';
 import { StatutFonctionnalite, Anomalie } from '../types';
+import { suggerePriorite, suggereDeveloppeur } from '../services/aiService';
 
 export function TesteurTachesPage() {
   const { currentUser, users } = useAuth();
+  const isAdmin = currentUser?.role === 'admin';
   const { 
     fonctionnalites, 
     campagnes, 
     projets,
+    anomalies,
     changerStatutFonctionnalite,
     ajouterAnomalie,
     ajouterNotification
@@ -32,17 +35,52 @@ export function TesteurTachesPage() {
   const [titreAnomalie, setTitreAnomalie] = useState('');
   const [developpeurSelectionne, setDeveloppeurSelectionne] = useState('');
   const [priorite, setPriorite] = useState<'basse' | 'moyenne' | 'haute' | 'critique'>('moyenne');
+  
+  // États pour les suggestions IA
+  const [suggestionPriorite, setSuggestionPriorite] = useState<'basse' | 'moyenne' | 'haute' | 'critique' | null>(null);
+  const [suggestionDeveloppeur, setSuggestionDeveloppeur] = useState<string | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
-  if (!currentUser || currentUser.role !== 'testeur') {
+  if (!currentUser || (currentUser.role !== 'testeur' && currentUser.role !== 'admin')) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">Accès réservé aux testeurs</p>
+        <p className="text-gray-500">Accès réservé aux testeurs et administrateurs</p>
       </div>
     );
   }
 
-  const mesTaches = fonctionnalites.filter(f => f.testeurAssigneId === currentUser.id);
+  // Pour l'admin, voir toutes les tâches. Pour le testeur, voir seulement les siennes
+  const mesTaches = isAdmin
+    ? fonctionnalites
+    : fonctionnalites.filter(f => f.testeurAssigneId === currentUser.id);
   const developpeurs = users.filter(u => u.role === 'developpeur');
+
+  // Effet pour suggérer la priorité quand le titre ou la description changent
+  useEffect(() => {
+    if (titreAnomalie || descriptionAnomalie) {
+      const prioriteSuggeree = suggerePriorite(titreAnomalie, descriptionAnomalie);
+      setSuggestionPriorite(prioriteSuggeree);
+      setShowSuggestions(true);
+    } else {
+      setSuggestionPriorite(null);
+      setShowSuggestions(false);
+    }
+  }, [titreAnomalie, descriptionAnomalie]);
+
+  // Effet pour suggérer le développeur quand le titre ou la description changent
+  useEffect(() => {
+    if (titreAnomalie || descriptionAnomalie) {
+      const fonctionnalite = fonctionnalites.find(f => f.id === fonctionnaliteSelectionnee);
+      const devSuggere = suggereDeveloppeur(
+        { titre: titreAnomalie, description: descriptionAnomalie, module: fonctionnalite?.module },
+        anomalies,
+        developpeurs
+      );
+      setSuggestionDeveloppeur(devSuggere);
+    } else {
+      setSuggestionDeveloppeur(null);
+    }
+  }, [titreAnomalie, descriptionAnomalie, fonctionnaliteSelectionnee, anomalies, developpeurs]);
 
   const handleOpenDialogStatut = (fonctionnaliteId: string, statut: StatutFonctionnalite) => {
     setFonctionnaliteSelectionnee(fonctionnaliteId);
@@ -51,6 +89,9 @@ export function TesteurTachesPage() {
     setTitreAnomalie('');
     setDeveloppeurSelectionne('');
     setPriorite('moyenne');
+    setSuggestionPriorite(null);
+    setSuggestionDeveloppeur(null);
+    setShowSuggestions(false);
     setDialogStatutOpen(true);
   };
 
@@ -220,7 +261,7 @@ export function TesteurTachesPage() {
                       variant="outline"
                       className="text-green-600 border-green-600 hover:bg-green-50"
                       onClick={() => handleOpenDialogStatut(fonctionnalite.id, 'conforme')}
-                      disabled={fonctionnalite.statut === 'conforme'}
+                      disabled={fonctionnalite.statut === 'conforme' || isAdmin}
                     >
                       <CheckCircle2 className="w-4 h-4 mr-1" />
                       Conforme
@@ -230,6 +271,7 @@ export function TesteurTachesPage() {
                       variant="outline"
                       className="text-red-600 border-red-600 hover:bg-red-50"
                       onClick={() => handleOpenDialogStatut(fonctionnalite.id, 'anomalie')}
+                      disabled={isAdmin}
                     >
                       <AlertTriangle className="w-4 h-4 mr-1" />
                       Anomalie
@@ -289,6 +331,18 @@ export function TesteurTachesPage() {
                     <SelectItem value="basse">Basse</SelectItem>
                   </SelectContent>
                 </Select>
+                {suggestionPriorite && suggestionPriorite !== priorite && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 gap-1 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                    onClick={() => setPriorite(suggestionPriorite)}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    IA suggère : {suggestionPriorite}
+                  </Button>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -316,6 +370,18 @@ export function TesteurTachesPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {suggestionDeveloppeur && suggestionDeveloppeur !== developpeurSelectionne && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 gap-1 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                    onClick={() => setDeveloppeurSelectionne(suggestionDeveloppeur)}
+                  >
+                    <UserCheck className="w-3 h-3" />
+                    IA suggère : {developpeurs.find(d => d.id === suggestionDeveloppeur)?.prenom} {developpeurs.find(d => d.id === suggestionDeveloppeur)?.nom}
+                  </Button>
+                )}
               </div>
             </div>
           )}
