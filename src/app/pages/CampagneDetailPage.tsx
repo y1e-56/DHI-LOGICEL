@@ -29,6 +29,8 @@ export function CampagneDetailPage() {
   } = useData();
   const navigate = useNavigate();
 
+  const isAdmin = currentUser?.role === 'admin';
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [ajoutMembreDialogOpen, setAjoutMembreDialogOpen] = useState(false);
@@ -56,33 +58,42 @@ export function CampagneDetailPage() {
 
   const handleChangerStatutCampagne = (statut: 'en_cours' | 'terminee') => {
     if (!campagneId) return;
+  
     modifierCampagne(campagneId, { statut });
   };
 
-  const handleAjouterMembre = () => {
-    if (!campagneId || !nouveauMembre.userId) return;
+  const handleAjouterMembre = async () => {
+    if (!campagneId || !nouveauMembre.userId || !campagne) return;
 
-    if (nouveauMembre.type === 'testeur') {
-      const updatedTesteurs = [...campagne.equipeTesteurs, nouveauMembre.userId];
-      modifierCampagne(campagneId, { equipeTesteurs: updatedTesteurs });
-    } else {
-      const updatedDeveloppeurs = [...campagne.equipeDeveloppeurs, nouveauMembre.userId];
-      modifierCampagne(campagneId, { equipeDeveloppeurs: updatedDeveloppeurs });
+    try {
+      if (nouveauMembre.type === 'testeur') {
+        const updatedTesteurs = [...campagne.equipeTesteurs, nouveauMembre.userId];
+        await modifierCampagne(campagneId, { equipeTesteurs: updatedTesteurs });
+      } else {
+        const updatedDeveloppeurs = [...campagne.equipeDeveloppeurs, nouveauMembre.userId];
+        await modifierCampagne(campagneId, { equipeDeveloppeurs: updatedDeveloppeurs });
+      }
+
+      setNouveauMembre({ userId: '', type: 'testeur' });
+      setAjoutMembreDialogOpen(false);
+    } catch (error) {
+      console.error('Erreur lors de l\'ajout du membre:', error);
     }
-
-    setNouveauMembre({ userId: '', type: 'testeur' });
-    setAjoutMembreDialogOpen(false);
   };
 
-  const handleRetirerMembre = (userId: string, type: 'testeur' | 'developpeur') => {
-    if (!campagneId) return;
+  const handleRetirerMembre = async (userId: string, type: 'testeur' | 'developpeur') => {
+    if (!campagneId || !campagne) return;
 
-    if (type === 'testeur') {
-      const updatedTesteurs = campagne.equipeTesteurs.filter((id: string) => id !== userId);
-      modifierCampagne(campagneId, { equipeTesteurs: updatedTesteurs });
-    } else {
-      const updatedDeveloppeurs = campagne.equipeDeveloppeurs.filter((id: string) => id !== userId);
-      modifierCampagne(campagneId, { equipeDeveloppeurs: updatedDeveloppeurs });
+    try {
+      if (type === 'testeur') {
+        const updatedTesteurs = campagne.equipeTesteurs.filter((id: string) => id !== userId);
+        await modifierCampagne(campagneId, { equipeTesteurs: updatedTesteurs });
+      } else {
+        const updatedDeveloppeurs = campagne.equipeDeveloppeurs.filter((id: string) => id !== userId);
+        await modifierCampagne(campagneId, { equipeDeveloppeurs: updatedDeveloppeurs });
+      }
+    } catch (error) {
+      console.error('Erreur lors du retrait du membre:', error);
     }
   };
 
@@ -95,28 +106,32 @@ export function CampagneDetailPage() {
     setAssignDialogOpen(true);
   };
 
-  const handleAssignerFonctionnalite = () => {
+  const handleAssignerFonctionnalite = async () => {
     if (!assignData.fonctionnaliteId || !assignData.testeurAssigneId) return;
 
-    modifierFonctionnalite(assignData.fonctionnaliteId, {
-      testeurAssigneId: assignData.testeurAssigneId,
-      priorite: assignData.priorite,
-      dateAssignation: new Date().toISOString()
-    });
+    try {
+      await modifierFonctionnalite(assignData.fonctionnaliteId, {
+        testeurAssigneId: assignData.testeurAssigneId,
+        priorite: assignData.priorite,
+        dateAssignation: new Date().toISOString()
+      });
 
-    // Notifier le testeur
-    ajouterNotification({
-      id: `n${Date.now()}`,
-      userId: assignData.testeurAssigneId,
-      type: 'assignation',
-      titre: 'Nouvelle tâche assignée',
-      message: 'Une fonctionnalité vous a été assignée',
-      lue: false,
-      dateCreation: new Date().toISOString(),
-      lienUrl: '/testeur/taches'
-    });
+      // Notifier le testeur
+      ajouterNotification({
+        id: `n${Date.now()}`,
+        userId: assignData.testeurAssigneId,
+        type: 'assignation',
+        titre: 'Nouvelle tâche assignée',
+        message: 'Une fonctionnalité vous a été assignée',
+        lue: false,
+        dateCreation: new Date().toISOString(),
+        lienUrl: '/testeur/taches'
+      });
 
-    setAssignDialogOpen(false);
+      setAssignDialogOpen(false);
+    } catch (error) {
+      console.error('Erreur lors de l\'assignation:', error);
+    }
   };
   const fonctionnalitesCampagne = fonctionnalites.filter((f: any) => f.campagneId === campagneId);
   const anomaliesCampagne = anomalies.filter((a: any) => a.campagneId === campagneId);
@@ -129,6 +144,19 @@ export function CampagneDetailPage() {
     );
   }
 
+  // Vérifier les droits d'accès
+  const canEdit = currentUser.role === 'chef_testeur' && campagne.chefTesteurId === currentUser.id;
+  const canView = canEdit || currentUser.role === 'admin';
+
+  if (!canView) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">Accès non autorisé</p>
+      </div>
+    );
+  }
+
+  // Filtrer les testeurs et développeurs de l'équipe
   const testeurs = users.filter((u: any) => campagne.equipeTesteurs.includes(u.id));
   const developpeurs = users.filter((u: any) => campagne.equipeDeveloppeurs.includes(u.id));
 
@@ -156,36 +184,40 @@ export function CampagneDetailPage() {
     setDialogOpen(true);
   };
 
-  const handleAjouterFonctionnalite = () => {
+  const handleAjouterFonctionnalite = async () => {
     if (!formData.nom || !formData.testeurAssigneId || !campagneId) return;
 
-    const nouvelleFonctionnalite: Fonctionnalite = {
-      id: `f${Date.now()}`,
-      campagneId,
-      nom: formData.nom,
-      description: formData.description,
-      module: formData.module,
-      testeurAssigneId: formData.testeurAssigneId,
-      statut: 'non_testee',
-      priorite: formData.priorite,
-      dateAssignation: new Date().toISOString()
-    };
+    try {
+      const nouvelleFonctionnalite: Fonctionnalite = {
+        id: `f${Date.now()}`,
+        campagneId,
+        nom: formData.nom,
+        description: formData.description,
+        module: formData.module,
+        testeurAssigneId: formData.testeurAssigneId,
+        statut: 'non_testee',
+        priorite: formData.priorite,
+        dateAssignation: new Date().toISOString()
+      };
 
-    ajouterFonctionnalite(nouvelleFonctionnalite);
+      await ajouterFonctionnalite(nouvelleFonctionnalite);
 
-    // Notifier le testeur
-    ajouterNotification({
-      id: `n${Date.now()}`,
-      userId: formData.testeurAssigneId,
-      type: 'assignation',
-      titre: 'Nouvelle tâche assignée',
-      message: `La fonctionnalité "${formData.nom}" vous a été assignée`,
-      lue: false,
-      dateCreation: new Date().toISOString(),
-      lienUrl: '/testeur/taches'
-    });
+      // Notifier le testeur
+      ajouterNotification({
+        id: `n${Date.now()}`,
+        userId: formData.testeurAssigneId,
+        type: 'assignation',
+        titre: 'Nouvelle tâche assignée',
+        message: `La fonctionnalité "${formData.nom}" vous a été assignée`,
+        lue: false,
+        dateCreation: new Date().toISOString(),
+        lienUrl: '/testeur/taches'
+      });
 
-    setDialogOpen(false);
+      setDialogOpen(false);
+    } catch (error) {
+      console.error('Erreur lors de l\'ajout de la fonctionnalité:', error);
+    }
   };
 
   const getStatutBadge = (statut: StatutFonctionnalite) => {
@@ -207,7 +239,7 @@ export function CampagneDetailPage() {
     return config[priorite as keyof typeof config];
   };
 
-  const peutGerer = currentUser.role === 'chef_testeur';
+  const peutGerer = canEdit;
 
   return (
     <div className="space-y-6">
@@ -290,7 +322,7 @@ export function CampagneDetailPage() {
                   <Label htmlFor="priorite">Priorité *</Label>
                   <Select value={formData.priorite} onValueChange={(value: Priorite) => setFormData({ ...formData, priorite: value })}>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Sélectionner une priorité" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="critique">Critique</SelectItem>
@@ -385,7 +417,7 @@ export function CampagneDetailPage() {
             <h3 className="font-semibold">Fonctionnalités</h3>
             <Select value={filtreStatut} onValueChange={(value: StatutFonctionnalite | 'tous') => setFiltreStatut(value)}>
               <SelectTrigger className="w-48">
-                <SelectValue />
+                <SelectValue placeholder="Filtrer par statut" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="tous">Toutes</SelectItem>
@@ -617,7 +649,7 @@ export function CampagneDetailPage() {
               <Label htmlFor="priorite">Priorité *</Label>
               <Select value={assignData.priorite} onValueChange={(value: Priorite) => setAssignData({ ...assignData, priorite: value })}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Sélectionner une priorité" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="critique">Critique</SelectItem>
@@ -653,7 +685,7 @@ export function CampagneDetailPage() {
               <Label>Type de membre *</Label>
               <Select value={nouveauMembre.type} onValueChange={(value: 'testeur' | 'developpeur') => setNouveauMembre({ ...nouveauMembre, type: value })}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Sélectionner un rôle" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="testeur">Testeur</SelectItem>

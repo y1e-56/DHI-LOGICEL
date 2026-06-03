@@ -33,8 +33,8 @@ export function Campagnes() {
     description: '',
     dateDebut: '',
     dateFin: '',
-    testeurs: [] as string[],
-    developpeurs: [] as string[],
+    equipeTesteurs: [] as string[],
+    equipeDeveloppeurs: [] as string[],
     statut: 'planifiée' as 'planifiée' | 'en_cours' | 'terminée'
   });
 
@@ -58,8 +58,8 @@ export function Campagnes() {
       description: '',
       dateDebut: '',
       dateFin: '',
-      testeurs: [],
-      developpeurs: [],
+      equipeTesteurs: [],
+      equipeDeveloppeurs: [],
       statut: 'planifiée'
     });
     setEditingCampagne(null);
@@ -72,8 +72,8 @@ export function Campagnes() {
       description: campagne.description,
       dateDebut: campagne.dateDebut,
       dateFin: campagne.dateFin,
-      testeurs: campagne.testeurs,
-      developpeurs: campagne.developpeurs,
+      equipeTesteurs: campagne.equipeTesteurs,
+      equipeDeveloppeurs: campagne.equipeDeveloppeurs,
       statut: campagne.statut
     });
     setEditingCampagne(campagne.id);
@@ -88,11 +88,12 @@ export function Campagnes() {
   };
 
   const toggleUser = (userId: string, type: 'testeurs' | 'developpeurs') => {
+    const propName = type === 'testeurs' ? 'equipeTesteurs' : 'equipeDeveloppeurs';
     setFormData(prev => ({
       ...prev,
-      [type]: prev[type].includes(userId)
-        ? prev[type].filter(id => id !== userId)
-        : [...prev[type], userId]
+      [propName]: prev[propName].includes(userId)
+        ? prev[propName].filter(id => id !== userId)
+        : [...prev[propName], userId]
     }));
   };
 
@@ -212,7 +213,7 @@ export function Campagnes() {
                     onValueChange={(value: any) => setFormData({ ...formData, statut: value })}
                   >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Sélectionner un statut" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="planifiée">Planifiée</SelectItem>
@@ -229,7 +230,7 @@ export function Campagnes() {
                       <div key={user.id} className="flex items-center space-x-2">
                         <Checkbox
                           id={`testeur-${user.id}`}
-                          checked={formData.testeurs.includes(user.id)}
+                          checked={formData.equipeTesteurs.includes(user.id)}
                           onCheckedChange={() => toggleUser(user.id, 'testeurs')}
                         />
                         <label
@@ -250,7 +251,7 @@ export function Campagnes() {
                       <div key={user.id} className="flex items-center space-x-2">
                         <Checkbox
                           id={`dev-${user.id}`}
-                          checked={formData.developpeurs.includes(user.id)}
+                          checked={formData.equipeDeveloppeurs.includes(user.id)}
                           onCheckedChange={() => toggleUser(user.id, 'developpeurs')}
                         />
                         <label
@@ -311,7 +312,7 @@ export function Campagnes() {
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Users className="size-4" />
-                      <span>{campagne.testeurs.length} testeurs, {campagne.developpeurs.length} développeurs</span>
+                      <span>{campagne.equipeTesteurs.length} testeurs, {campagne.equipeDeveloppeurs.length} développeurs</span>
                     </div>
                   </div>
 

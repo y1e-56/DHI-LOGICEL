@@ -47,7 +47,7 @@ const prioriteBadge: Record<string, string> = {
 };
 
 export function DashboardPage() {
-  const { currentUser } = useAuth();
+  const { currentUser, users } = useAuth();
   const { projets, campagnes, fonctionnalites, anomalies } = useData();
   const navigate = useNavigate();
 
@@ -63,6 +63,283 @@ export function DashboardPage() {
       ? Math.round((fonctionnalitesTestees.length / fonctionnalites.length) * 100)
       : 0;
 
+    // Stats globales KPI pour admin
+    const totalUtilisateurs = users.length;
+    const totalProjets = projets.length;
+    const totalCampagnes = campagnes.length;
+    const totalAnomalies = anomalies.length;
+    const anomaliesResolues = anomalies.filter(a => a.statut === 'cloturee' || a.statut === 'validee').length;
+    const tauxResolution = totalAnomalies > 0 ? Math.round((anomaliesResolues / totalAnomalies) * 100) : 0;
+    const anomaliesCritiques = anomalies.filter(a => a.priorite === 'critique' && a.statut !== 'cloturee').length;
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Tableau de bord Administrateur</h1>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Bonjour, {currentUser.prenom} — vue d'ensemble globale
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => navigate('/admin/history')}
+              className="gap-1.5 bg-purple-600 hover:bg-purple-700 text-white shrink-0"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Historique
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => navigate('/admin/anomalies')}
+              className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
+            >
+              <Bug className="w-4 h-4" />
+              Toutes anomalies
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats globales KPI */}
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+          <StatCard
+            label="Utilisateurs"
+            value={totalUtilisateurs}
+            icon={Users}
+            accent="bg-purple-500"
+            iconBg="bg-purple-50"
+            iconColor="text-purple-600"
+          />
+          <StatCard
+            label="Projets"
+            value={totalProjets}
+            sub={`${projetsActifs.length} actifs`}
+            icon={FolderKanban}
+            accent="bg-indigo-500"
+            iconBg="bg-indigo-50"
+            iconColor="text-indigo-600"
+          />
+          <StatCard
+            label="Campagnes"
+            value={totalCampagnes}
+            sub={`${campagnesEnCours.length} en cours`}
+            icon={TestTube}
+            accent="bg-sky-500"
+            iconBg="bg-sky-50"
+            iconColor="text-sky-600"
+          />
+          <StatCard
+            label="Anomalies"
+            value={totalAnomalies}
+            sub={`${anomaliesCritiques} critiques`}
+            icon={AlertTriangle}
+            accent="bg-red-500"
+            iconBg="bg-red-50"
+            iconColor="text-red-600"
+          />
+          <StatCard
+            label="Taux résolution"
+            value={`${tauxResolution}%`}
+            sub={`${anomaliesResolues} résolues`}
+            icon={TrendingUp}
+            accent="bg-emerald-500"
+            iconBg="bg-emerald-50"
+            iconColor="text-emerald-600"
+          />
+          <StatCard
+            label="Avancement"
+            value={`${avancementPct}%`}
+            sub={`${fonctionnalitesTestees.length} testées`}
+            icon={CheckCircle2}
+            accent="bg-blue-500"
+            iconBg="bg-blue-50"
+            iconColor="text-blue-600"
+          />
+        </div>
+
+        <div className="w-full bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-sm">
+          <div className="px-4 py-2.5 flex items-center justify-between border-b border-slate-100">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Avancement global</span>
+            <span className="text-sm font-bold text-slate-700">{avancementPct}%</span>
+          </div>
+          <div className="px-4 py-3">
+            <div className="w-full bg-slate-100 rounded-full h-2">
+              <div
+                className="h-2 rounded-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-700"
+                style={{ width: `${avancementPct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3 pt-5 px-5">
+              <CardTitle className="text-sm font-bold text-slate-800">Campagnes actives</CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 pb-5">
+              {campagnesEnCours.length === 0 ? (
+                <div className="py-6 text-center">
+                  <TestTube className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400">Aucune campagne en cours</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {campagnesEnCours.slice(0, 4).map(campagne => {
+                    const projet = projets.find(p => p.id === campagne.projetId);
+                    const fonctsCampagne = fonctionnalites.filter(f => f.campagneId === campagne.id);
+                    const anomCampagne = anomalies.filter(a => a.campagneId === campagne.id && a.statut !== 'cloturee');
+                    const pct = fonctsCampagne.length
+                      ? Math.round((fonctsCampagne.filter(f => f.statut !== 'non_testee').length / fonctsCampagne.length) * 100)
+                      : 0;
+
+                    return (
+                      <div
+                        key={campagne.id}
+                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group"
+                        onClick={() => navigate(`/campagnes/${campagne.id}`)}
+                      >
+                        <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <TestTube className="w-4 h-4 text-indigo-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-slate-800 truncate">{campagne.nom}</p>
+                            {anomCampagne.length > 0 && (
+                              <Badge className="bg-red-100 text-red-700 text-[10px] px-1.5 border-0 py-0">
+                                {anomCampagne.length} anomalie{anomCampagne.length > 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-400 truncate">{projet?.nom}</p>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <div className="flex-1 bg-slate-100 rounded-full h-1">
+                              <div
+                                className="h-1 rounded-full bg-indigo-500"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-400">{pct}%</span>
+                          </div>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 transition-colors flex-shrink-0" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3 pt-5 px-5">
+              <CardTitle className="text-sm font-bold text-slate-800">Anomalies récentes</CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 pb-5">
+              {anomaliesOuvertes.length === 0 ? (
+                <div className="py-6 text-center">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-200 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400">Aucune anomalie ouverte</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {anomaliesOuvertes.slice(0, 4).map(anomalie => (
+                    <div
+                      key={anomalie.id}
+                      className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group"
+                      onClick={() => navigate(`/anomalies/${anomalie.id}`)}
+                    >
+                      <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bug className="w-4 h-4 text-red-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{anomalie.titre}</p>
+                          <Badge className={`text-[10px] px-1.5 border py-0 ${prioriteBadge[anomalie.priorite]}`}>
+                            {anomalie.priorite}
+                          </Badge>
+                        </div>
+                        <p className="text-[10px] font-mono text-slate-400">
+                          {new Date(anomalie.dateCreation).toLocaleDateString('fr-FR')}
+                        </p>
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 transition-colors flex-shrink-0 mt-1" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <button
+            onClick={() => navigate('/projets')}
+            className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all text-left group"
+          >
+            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
+              <FolderKanban className="w-5 h-5 text-indigo-600" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-slate-800">Gérer les projets</div>
+              <div className="text-xs text-slate-400">{projetsActifs.length} actifs</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+          </button>
+
+          <button
+            onClick={() => navigate('/campagnes')}
+            className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all text-left group"
+          >
+            <div className="w-10 h-10 bg-sky-50 rounded-xl flex items-center justify-center">
+              <TestTube className="w-5 h-5 text-sky-600" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-slate-800">Gérer les campagnes</div>
+              <div className="text-xs text-slate-400">{campagnesEnCours.length} en cours</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+          </button>
+
+          <button
+            onClick={() => navigate('/admin/utilisateurs')}
+            className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all text-left group"
+          >
+            <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center">
+              <Users className="w-5 h-5 text-purple-600" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-slate-800">Gérer les utilisateurs</div>
+              <div className="text-xs text-slate-400">{totalUtilisateurs} comptes</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+          </button>
+
+          <button
+            onClick={() => navigate('/reporting')}
+            className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all text-left group"
+          >
+            <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-slate-800">Rapports</div>
+              <div className="text-xs text-slate-400">Exporter PDF / Excel</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderChefTesteurDashboard = () => {
+    const fonctionnalitesTestees = fonctionnalites.filter(f => f.statut !== 'non_testee');
+    const avancementPct = fonctionnalites.length
+      ? Math.round((fonctionnalitesTestees.length / fonctionnalites.length) * 100)
+      : 0;
+
     return (
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-4">
@@ -72,16 +349,14 @@ export function DashboardPage() {
               Bonjour, {currentUser.prenom} — vue d'ensemble de l'activité
             </p>
           </div>
-          {currentUser.role === 'chef_testeur' && (
-            <Button
-              size="sm"
-              onClick={() => navigate('/reporting')}
-              className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
-            >
-              <BarChart3 className="w-4 h-4" />
-              Reporting
-            </Button>
-          )}
+          <Button
+            size="sm"
+            onClick={() => navigate('/reporting')}
+            className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
+          >
+            <BarChart3 className="w-4 h-4" />
+            Reporting
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -500,7 +775,8 @@ export function DashboardPage() {
 
   return (
     <div>
-      {(currentUser.role === 'admin' || currentUser.role === 'chef_testeur') && renderAdminDashboard()}
+      {currentUser.role === 'admin' && renderAdminDashboard()}
+      {currentUser.role === 'chef_testeur' && renderChefTesteurDashboard()}
       {currentUser.role === 'testeur' && renderTesteurDashboard()}
       {currentUser.role === 'developpeur' && renderDeveloppeurDashboard()}
     </div>

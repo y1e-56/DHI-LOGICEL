@@ -149,7 +149,7 @@ export function ToutesAnomalies() {
               <label className="text-sm font-medium">Statut</label>
               <Select value={filtreStatut} onValueChange={setFiltreStatut}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Filtrer par statut" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="toutes">Toutes</SelectItem>
@@ -165,7 +165,7 @@ export function ToutesAnomalies() {
               <label className="text-sm font-medium">Campagne</label>
               <Select value={filtreCampagne} onValueChange={setFiltreCampagne}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Filtrer par campagne" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="toutes">Toutes les campagnes</SelectItem>

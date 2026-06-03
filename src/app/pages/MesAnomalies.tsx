@@ -92,7 +92,7 @@ export function MesAnomalies() {
         <Label className="text-sm font-medium">Filtrer par statut:</Label>
         <Select value={filtreStatut} onValueChange={setFiltreStatut}>
           <SelectTrigger className="w-[200px]">
-            <SelectValue />
+            <SelectValue placeholder="Choisir un statut" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="toutes">Toutes</SelectItem>

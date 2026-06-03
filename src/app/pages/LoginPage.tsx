@@ -24,8 +24,7 @@ export function LoginPage() {
     }
 
     setLoading(true);
-    await new Promise(r => setTimeout(r, 300));
-    const result = login(email, password);
+    const result = await login(email, password);
     setLoading(false);
 
     if (result.success) {

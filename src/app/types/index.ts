@@ -15,6 +15,7 @@ export interface User {
   password: string;
   bloqueJusqua?: Date;
   tentativesEchouees: number;
+  dateSuppression?: string;
 }
 
 export interface Projet {
@@ -57,7 +58,8 @@ export interface Fonctionnalite {
 
 export interface Anomalie {
   id: string;
-  fonctionnaliteId: string;
+  testCaseId: string;
+  fonctionnaliteId?: string;
   campagneId: string;
   titre: string;
   description: string;
@@ -89,4 +91,15 @@ export interface Notification {
   lue: boolean;
   dateCreation: string;
   lienUrl?: string;
+}
+
+export interface TestCase {
+  id: string;
+  featureId: string;
+  nom: string;
+  steps?: string;
+  expectedResult?: string;
+  status?: string;
+  priority?: Priorite;
+  dateCreation?: string;
 }

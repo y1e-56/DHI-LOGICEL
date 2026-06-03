@@ -190,7 +190,7 @@ export function Assignation() {
                     onValueChange={(value: any) => setFormData({ ...formData, priorite: value })}
                   >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Sélectionner une priorité" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="critique">Critique</SelectItem>

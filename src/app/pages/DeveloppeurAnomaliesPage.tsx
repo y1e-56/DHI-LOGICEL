@@ -6,29 +6,53 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Textarea } from '../components/ui/textarea';
+import { Label } from '../components/ui/label';
 import { AlertTriangle, Clock, CheckCircle2, Code, Play } from 'lucide-react';
 import { StatutAnomalie } from '../types';
 
 export function DeveloppeurAnomaliesPage() {
   const { currentUser, users } = useAuth();
-  const { anomalies, fonctionnalites, campagnes, projets, changerStatutAnomalie } = useData();
+  const isAdmin = currentUser?.role === 'admin';
+  const { anomalies, fonctionnalites, campagnes, projets, changerStatutAnomalie, signalerResolution } = useData();
   const navigate = useNavigate();
   const [filtreStatut, setFiltreStatut] = useState<StatutAnomalie | 'tous'>('tous');
+  const [dialogResolutionOpen, setDialogResolutionOpen] = useState(false);
+  const [anomalieSelectionnee, setAnomalieSelectionnee] = useState<string | null>(null);
+  const [commentaireResolution, setCommentaireResolution] = useState('');
 
   const handlePrendreEnCharge = (anomalieId: string) => {
     if (!currentUser) return;
     changerStatutAnomalie(anomalieId, 'en_cours', currentUser.id);
   };
 
-  if (!currentUser || currentUser.role !== 'developpeur') {
+  const openResolutionDialog = (anomalieId: string) => {
+    setAnomalieSelectionnee(anomalieId);
+    setCommentaireResolution('');
+    setDialogResolutionOpen(true);
+  };
+
+  const handleSignalerResolution = async () => {
+    if (!anomalieSelectionnee || !currentUser || !commentaireResolution.trim()) return;
+    await signalerResolution(anomalieSelectionnee, currentUser.id, commentaireResolution.trim());
+    setDialogResolutionOpen(false);
+    setAnomalieSelectionnee(null);
+    setCommentaireResolution('');
+  };
+
+  if (!currentUser || (currentUser.role !== 'developpeur' && currentUser.role !== 'admin')) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">Accès réservé aux développeurs</p>
+        <p className="text-gray-500">Accès réservé aux développeurs et administrateurs</p>
       </div>
     );
   }
 
-  const mesAnomalies = anomalies.filter(a => a.developpeurId === currentUser.id);
+  // Pour l'admin, voir toutes les anomalies. Pour le développeur, voir seulement les siennes
+  const mesAnomalies = currentUser.role === 'admin'
+    ? anomalies
+    : anomalies.filter(a => a.developpeurId === currentUser.id);
   
   const anomaliesFiltrees = mesAnomalies.filter(a => {
     if (filtreStatut === 'tous') return true;
@@ -133,7 +157,7 @@ export function DeveloppeurAnomaliesPage() {
         <label className="text-sm font-medium">Filtrer par statut :</label>
         <Select value={filtreStatut} onValueChange={(value: any) => setFiltreStatut(value)}>
           <SelectTrigger className="w-48">
-            <SelectValue />
+            <SelectValue placeholder="Choisir un statut" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="tous">Tous</SelectItem>
@@ -188,9 +212,25 @@ export function DeveloppeurAnomaliesPage() {
                               e.stopPropagation();
                               handlePrendreEnCharge(anomalie.id);
                             }}
+                            disabled={isAdmin}
                           >
                             <Play className="w-4 h-4" />
                             Prendre en charge
+                          </Button>
+                        )}
+                        {anomalie.statut === 'en_cours' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openResolutionDialog(anomalie.id);
+                            }}
+                            disabled={isAdmin}
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            Signaler résolution
                           </Button>
                         )}
                         <Button 
@@ -242,6 +282,31 @@ export function DeveloppeurAnomaliesPage() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={dialogResolutionOpen} onOpenChange={setDialogResolutionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Signaler la résolution</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label className="text-sm">Commentaire de résolution *</Label>
+            <Textarea
+              rows={4}
+              value={commentaireResolution}
+              onChange={(e) => setCommentaireResolution(e.target.value)}
+              placeholder="Décrivez la correction apportée, fichiers modifiés, étapes de test..."
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogResolutionOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleSignalerResolution} disabled={!commentaireResolution.trim()}>
+              Envoyer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

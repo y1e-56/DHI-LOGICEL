@@ -46,7 +46,8 @@ export function AnomalieDetail() {
 
   const handleSignalerResolution = () => {
     if (!user) return;
-    
+    if (!peutSignalerResolution) return; // sécurité : seul le développeur assigné peut signaler
+
     signalerResolution(anomalie.id, user.id);
     
     // Notifier le testeur

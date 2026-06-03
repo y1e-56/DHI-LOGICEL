@@ -1,86 +1,71 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { User } from '../types';
-import { users as initialUsers } from '../data/mockData';
+import { authService } from '../services/authService';
+import { userService } from '../services/userService';
+import { getErrorMessage } from '../services/api';
 
 interface AuthContextType {
   currentUser: User | null;
   users: User[];
-  login: (email: string, password: string) => { success: boolean; message?: string };
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
-  bloquerUtilisateur: (id: string) => void;
-  debloquerUtilisateur: (id: string) => void;
-  creerUtilisateur: (user: Omit<User, 'id' | 'tentativesEchouees'>) => void;
+  bloquerUtilisateur: (id: string) => Promise<void>;
+  debloquerUtilisateur: (id: string) => Promise<void>;
+  creerUtilisateur: (user: Omit<User, 'id' | 'tentativesEchouees'> & { password: string }) => Promise<void>;
+  supprimerUtilisateur: (id: string) => Promise<void>;
+  restaurerUtilisateur: (id: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+
+  // Charger les utilisateurs depuis l'API
+  const refreshUsers = useCallback(async () => {
+    try {
+      const data = await userService.getAll();
+      setUsers(data);
+    } catch (e) {
+      toast.error('Erreur refreshUsers : ' + getErrorMessage(e as any));
+    }
+  }, []);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
     }
+    
+    // Charger les utilisateurs une seule fois au montage
+    if (!usersLoaded) {
+      refreshUsers();
+      setUsersLoaded(true);
+    }
   }, []);
 
-  const login = (email: string, password: string) => {
-    const user = users.find(u => u.email === email);
-
-    if (!user) {
-      return { success: false, message: 'Email ou mot de passe incorrect' };
+  // Si l'utilisateur courant est chef testeur ou admin, on s'assure d'avoir la liste des utilisateurs
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === 'admin' || currentUser.role === 'chef_testeur') {
+      refreshUsers();
     }
+  }, [currentUser?.id, currentUser?.role, refreshUsers]);
 
-    if (user.bloqueJusqua && new Date(user.bloqueJusqua) > new Date()) {
-      const minutesRestantes = Math.ceil(
-        (new Date(user.bloqueJusqua).getTime() - new Date().getTime()) / 60000
-      );
-      return {
-        success: false,
-        message: `Compte bloqué. Réessayez dans ${minutesRestantes} minute(s).`,
-      };
+  const login = async (email: string, password: string) => {
+    try {
+      const { user } = await authService.login(email, password);
+      setCurrentUser(user);
+      localStorage.setItem('currentUser', JSON.stringify(user));
+      return { success: true };
+    } catch (e: any) {
+      const message = e?.response?.data?.message || 'Email ou mot de passe incorrect';
+      return { success: false, message };
     }
-
-    if (user.password !== password) {
-      const updatedUsers = users.map(u => {
-        if (u.id === user.id) {
-          const tentatives = u.tentativesEchouees + 1;
-          if (tentatives >= 5) {
-            const bloqueJusqua = new Date();
-            bloqueJusqua.setMinutes(bloqueJusqua.getMinutes() + 15);
-            return { ...u, tentativesEchouees: tentatives, bloqueJusqua };
-          }
-          return { ...u, tentativesEchouees: tentatives };
-        }
-        return u;
-      });
-      setUsers(updatedUsers);
-
-      const tentativesRestantes = 5 - (user.tentativesEchouees + 1);
-      if (tentativesRestantes <= 0) {
-        return {
-          success: false,
-          message: 'Compte bloqué suite à 5 tentatives échouées. Réessayez dans 15 minutes.',
-        };
-      }
-      return {
-        success: false,
-        message: `Identifiants incorrects. ${tentativesRestantes} tentative(s) restante(s).`,
-      };
-    }
-
-    const updatedUsers = users.map(u =>
-      u.id === user.id ? { ...u, tentativesEchouees: 0, bloqueJusqua: undefined } : u
-    );
-    setUsers(updatedUsers);
-
-    const userToSet = { ...user, tentativesEchouees: 0, bloqueJusqua: undefined };
-    setCurrentUser(userToSet);
-    localStorage.setItem('currentUser', JSON.stringify(userToSet));
-
-    return { success: true };
   };
 
   const logout = () => {
@@ -88,27 +73,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('currentUser');
   };
 
-  const bloquerUtilisateur = (id: string) => {
-    const bloque = new Date();
-    bloque.setFullYear(bloque.getFullYear() + 10);
-    setUsers(prev =>
-      prev.map(u => (u.id === id ? { ...u, bloqueJusqua: bloque, tentativesEchouees: 5 } : u))
-    );
+  const bloquerUtilisateur = async (id: string) => {
+    try {
+      await userService.block(id);
+      await refreshUsers();
+      toast.success('Utilisateur bloqué');
+    } catch (e) {
+      toast.error('Erreur lors du blocage : ' + getErrorMessage(e as any));
+    }
   };
 
-  const debloquerUtilisateur = (id: string) => {
-    setUsers(prev =>
-      prev.map(u => (u.id === id ? { ...u, bloqueJusqua: undefined, tentativesEchouees: 0 } : u))
-    );
+  const debloquerUtilisateur = async (id: string) => {
+    try {
+      await userService.unblock(id);
+      await refreshUsers();
+      toast.success('Utilisateur débloqué');
+    } catch (e) {
+      toast.error('Erreur lors du déblocage : ' + getErrorMessage(e as any));
+    }
   };
 
-  const creerUtilisateur = (user: Omit<User, 'id' | 'tentativesEchouees'>) => {
-    const newUser: User = {
-      ...user,
-      id: `u${Date.now()}`,
-      tentativesEchouees: 0,
-    };
-    setUsers(prev => [...prev, newUser]);
+  const creerUtilisateur = async (user: Omit<User, 'id' | 'tentativesEchouees'> & { password: string }) => {
+    try {
+      const newUser = await userService.create({
+        ...user,
+        tentativesEchouees: 0
+      });
+      setUsers(prev => [...prev, newUser]);
+      toast.success('Utilisateur créé avec succès');
+    } catch (e) {
+      toast.error('Erreur lors de la création : ' + getErrorMessage(e as any));
+    }
+  };
+
+  const supprimerUtilisateur = async (id: string) => {
+    try {
+      await userService.block(id);
+      setUsers(prev => prev.map(u => 
+        u.id === id ? { ...u, bloqueJusqua: new Date(new Date().getTime() + 365*24*60*60*1000) } : u
+      ));
+      toast.success('Utilisateur désactivé');
+    } catch (e) {
+      console.error('Erreur supprimerUtilisateur:', e);
+      toast.error('Erreur lors de la désactivation');
+    }
+  };
+
+  const restaurerUtilisateur = (id: string) => {
+    setUsers(prev => prev.map(u => 
+      u.id === id ? { ...u, bloqueJusqua: undefined } : u
+    ));
+    toast.success('Utilisateur restauré');
   };
 
   return (
@@ -122,6 +137,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         bloquerUtilisateur,
         debloquerUtilisateur,
         creerUtilisateur,
+        supprimerUtilisateur,
+        restaurerUtilisateur,
       }}
     >
       {children}
