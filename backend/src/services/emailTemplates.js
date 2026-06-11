@@ -111,6 +111,23 @@ export function campaignCreatedEmail({ userFirstName, campaignName, projectName,
   `);
 }
 
+export function userCreatedEmail({ userFirstName, email, password, linkUrl }) {
+  return layout('Votre compte DHI Test Tracking', `
+    <p style="margin:0 0 16px;font-size:15px;color:#334155;line-height:1.5">Bonjour <strong>${userFirstName}</strong>,</p>
+    <p style="margin:0 0 16px;font-size:15px;color:#334155;line-height:1.5">
+      Un compte a été créé pour vous sur <strong>DHI Test Tracking</strong>.
+    </p>
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 16px;font-size:14px;color:#334155">
+      <tr><td style="padding:4px 16px 4px 0;font-weight:600;color:#64748b">Email</td><td>${email}</td></tr>
+      <tr><td style="padding:4px 16px 4px 0;font-weight:600;color:#64748b">Mot de passe</td><td><code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:13px">${password}</code></td></tr>
+    </table>
+    <p style="margin:0 0 16px;font-size:14px;color:#64748b;line-height:1.5">
+      Nous vous recommandons de changer votre mot de passe après votre première connexion.
+    </p>
+    ${button(linkUrl, 'Se connecter')}
+  `);
+}
+
 export function loginNotificationEmail({ userFirstName, date, time, ip }) {
   return layout('Connexion détectée', `
     <p style="margin:0 0 16px;font-size:15px;color:#334155;line-height:1.5">Bonjour <strong>${userFirstName}</strong>,</p>

@@ -10,6 +10,7 @@ import {
   projectCreatedEmail,
   campaignCreatedEmail,
   loginNotificationEmail,
+  userCreatedEmail,
 } from './emailTemplates.js';
 import * as db from '../db/index.js';
 import { emitNotification, emitDataChanged, emitCampaignCreated, emitCampaignUpdated, emitCampaignDeleted } from '../socket.js';
@@ -514,6 +515,26 @@ export function setupEventSubscribers(io) {
       });
     } catch (e) {
       console.error('[events] Erreur history testCase:deleted', e);
+    }
+  });
+
+  // ── Email création de compte ────────────────────────────
+
+  bus.on('user:created', async ({ user, password }) => {
+    if (!user?.email) return;
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: 'Votre compte DHI Test Tracking',
+        html: userCreatedEmail({
+          userFirstName: user.first_name,
+          email: user.email,
+          password,
+          linkUrl: process.env.APP_URL || 'http://localhost:5173',
+        }),
+      });
+    } catch (e) {
+      console.error('[email] Erreur envoi user:created', e);
     }
   });
 

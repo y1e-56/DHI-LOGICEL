@@ -22,6 +22,7 @@ const loginSchema = z.object({
 router.post('/register', async (req, res) => {
   const data = registerSchema.parse(req.body);
   const user = await authService.register(data.email, data.password, data.first_name, data.last_name, data.role);
+  bus.emit('user:created', { user, password: data.password });
   res.status(201).json({ user });
 });
 
