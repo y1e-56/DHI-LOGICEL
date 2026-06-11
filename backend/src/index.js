@@ -3,7 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import http from 'http';
-import { initDb, pool } from './config/database.js';
+import { initDb } from './config/database.js';
+import pgPool from './config/database.js';
 import routes from './routes/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { initializeSocket } from './socket.js';
@@ -52,7 +53,7 @@ app.use('/api', routes);
 app.use(errorHandler);
 
 async function autoSeedIfEmpty() {
-  const client = await pool.connect();
+  const client = await pgPool.connect();
   try {
     const { rows } = await client.query('SELECT COUNT(*)::int AS count FROM users');
     if (rows[0].count === 0) {
