@@ -18,6 +18,8 @@ services:
         generateValue: true
       - key: CORS_ORIGIN
         value: "*"
+      - key: SENDGRID_API_KEY
+        sync: false
       - key: CORS_ORIGINS
         sync: false
       - key: SMTP_HOST
@@ -29,7 +31,7 @@ services:
       - key: SMTP_PASS
         sync: false
       - key: EMAIL_FROM
-        sync: false
+        value: "DHI Test Tracking <jipnangryan237@gmail.com>"
 
   - type: static
     name: dhi-test-tracking-app
