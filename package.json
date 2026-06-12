@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node backend/src/index.js",
     "dev": "node --watch backend/src/index.js",
     "seed": "node backend/src/seed.js"
   },
