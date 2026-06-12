@@ -18,7 +18,9 @@ services:
         generateValue: true
       - key: CORS_ORIGIN
         value: "*"
-      - key: SENDGRID_API_KEY
+      - key: MAILGUN_API_KEY
+        sync: false
+      - key: MAILGUN_DOMAIN
         sync: false
       - key: CORS_ORIGINS
         sync: false

@@ -1,15 +1,21 @@
 let sendMail = null;
 
-const sgKey = process.env.SENDGRID_API_KEY;
+const mgKey = process.env.MAILGUN_API_KEY;
+const mgDomain = process.env.MAILGUN_DOMAIN;
 
-if (sgKey) {
-  const sgMail = (await import('@sendgrid/mail')).default;
-  sgMail.setApiKey(sgKey);
+if (mgKey && mgDomain) {
+  const Mailgun = (await import('mailgun.js')).default;
+  const mg = new Mailgun(FormData).client({ username: 'api', key: mgKey });
   sendMail = ({ to, subject, html }) => {
-    const from = process.env.EMAIL_FROM || `"DHI Test Tracking" <${process.env.SMTP_USER || 'noreply@dhi-test-tracking.com'}>`;
-    return sgMail.send({ from, to: Array.isArray(to) ? to : [to], subject, html });
+    const from = process.env.EMAIL_FROM || `"DHI Test Tracking" <mailgun@${mgDomain}>`;
+    return mg.messages.create(mgDomain, {
+      from,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html,
+    });
   };
-  console.log('[email] SendGrid initialisé');
+  console.log('[email] Mailgun initialisé');
 } else if (process.env.SMTP_HOST) {
   const nodemailer = (await import('nodemailer')).default;
   const transporter = nodemailer.createTransport({
