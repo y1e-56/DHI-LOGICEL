@@ -49,9 +49,12 @@ export async function archiveProject(id) {
 }
 
 export async function deleteProject(id) {
-  const result = await db.projects.remove(id);
-  if (!result) throw new AppError('Projet non trouvé', 404);
-  bus.emit('project:deleted', { project_id: id, user_id: null });
+  return withTransaction(async (client) => {
+    await db.history.deleteByProject(id, client);
+    const result = await db.projects.remove(id, client);
+    if (!result) throw new AppError('Projet non trouvé', 404);
+    bus.emit('project:deleted', { project_id: id, user_id: null });
+  });
 }
 
 export async function getProjectCampaigns(projectId) {

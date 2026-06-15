@@ -41,6 +41,17 @@ export async function list(userId, campaignId, client = null) {
   return result.rows;
 }
 
+export async function deleteByProject(projectId, client) {
+  await client.query(
+    `DELETE FROM history_actions
+     WHERE (entity_type = 'project' AND entity_id = $1)
+        OR (entity_type = 'campaign' AND entity_id IN (SELECT id FROM campaigns WHERE project_id = $1))
+        OR (entity_type = 'feature' AND entity_id IN (SELECT id FROM features WHERE campaign_id IN (SELECT id FROM campaigns WHERE project_id = $1)))
+        OR (entity_type = 'anomaly' AND entity_id IN (SELECT id FROM anomalies WHERE feature_id IN (SELECT id FROM features WHERE campaign_id IN (SELECT id FROM campaigns WHERE project_id = $1))))`,
+    [projectId]
+  );
+}
+
 export async function listRecent(limit = 20, client = null) {
   const c = client || pool;
   const result = await c.query(
