@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18n from '../i18n/i18n';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { useNavigate, useLocation } from 'react-router';
@@ -20,7 +21,7 @@ import {
 import { AIChatBox } from './AIChatBox';
 
 export function Layout({ children }: { children: ReactNode }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { currentUser, logout } = useAuth();
   const { notifications, marquerNotificationLue } = useData();
   const navigate = useNavigate();
