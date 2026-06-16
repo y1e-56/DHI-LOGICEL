@@ -3,6 +3,7 @@ services:
     name: dhi-test-tracking-app
     env: static
     region: frankfurt
+    rootDir: DHI-LOGICEL
     buildCommand: npm run build
     staticPublishPath: ./dist
     pullRequestPreviewsEnabled: false
