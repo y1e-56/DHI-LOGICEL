@@ -213,9 +213,9 @@ export function CampagneDetailPage() {
   const equipeTesteursDedupliquee = [...new Set(campagne.equipeTesteurs)];
   const equipeDeveloppeursDedupliquee = [...new Set(campagne.equipeDeveloppeurs)];
 
-  // Afficher TOUS les testeurs/développeurs disponibles
-  const tousLesTesteurs = users.filter((u: any) => u.role === 'testeur');
-  const tousLesDeveloppeurs = users.filter((u: any) => u.role === 'developpeur');
+  // N'afficher que les testeurs/développeurs membres de la campagne
+  const tousLesTesteurs = users.filter((u: any) => u.role === 'testeur' && equipeTesteursDedupliquee.includes(String(u.id)));
+  const tousLesDeveloppeurs = users.filter((u: any) => u.role === 'developpeur' && equipeDeveloppeursDedupliquee.includes(String(u.id)));
 
   // Pour l'affichage de l'équipe actuelle uniquement
   const testeurs = users.filter((u: any) => equipeTesteursDedupliquee.includes(String(u.id)));
