@@ -101,7 +101,8 @@ export function AdminUtilisateursPage() {
 
   const estSupprime = (user: User) => !!user.dateSuppression;
 
-  const utilisateursUniques = users.filter((u: User) => !u.dateSuppression);
+  const utilisateursActifs = users.filter((u: User) => !u.dateSuppression);
+  const utilisateursSupprimes = users.filter((u: User) => u.dateSuppression);
 
   const handleCreateUser = () => {
     const newErrors = {
@@ -279,7 +280,7 @@ export function AdminUtilisateursPage() {
             <div className="h-0.5 bg-emerald-500" />
             <CardContent className="pt-4 pb-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{t('admin.users.active')}</p>
-              <p className="text-3xl font-bold text-emerald-600 mt-1">{utilisateursUniques.filter(u => !estSupprime(u)).length}</p>
+              <p className="text-3xl font-bold text-emerald-600 mt-1">{utilisateursActifs.length}</p>
             </CardContent>
           </Card>
         </button>
@@ -288,7 +289,7 @@ export function AdminUtilisateursPage() {
             <div className="h-0.5 bg-red-500" />
             <CardContent className="pt-4 pb-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{t('admin.users.blocked')}</p>
-              <p className="text-3xl font-bold text-red-600 mt-1">{utilisateursUniques.filter(u => estBloque(u)).length}</p>
+              <p className="text-3xl font-bold text-red-600 mt-1">{utilisateursActifs.filter(u => estBloque(u)).length}</p>
             </CardContent>
           </Card>
         </button>
@@ -297,7 +298,7 @@ export function AdminUtilisateursPage() {
             <div className="h-0.5 bg-gray-500" />
             <CardContent className="pt-4 pb-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{t('admin.users.deleted')}</p>
-              <p className="text-3xl font-bold text-gray-600 mt-1">{utilisateursUniques.filter(u => u.dateSuppression).length}</p>
+              <p className="text-3xl font-bold text-gray-600 mt-1">{utilisateursSupprimes.length}</p>
             </CardContent>
           </Card>
         </button>
@@ -315,7 +316,7 @@ export function AdminUtilisateursPage() {
                     <div className={`w-2 h-2 rounded-full ${roleAccent[role]}`} />
                     <span className="text-xs text-slate-500">{t(roleConfig[role].labelKey)}</span>
                   </div>
-                  <span className="text-xs font-bold text-slate-700">{utilisateursUniques.filter(u => u.role === role).length}</span>
+                  <span className="text-xs font-bold text-slate-700">{utilisateursActifs.filter(u => u.role === role).length}</span>
                 </button>
               ))}
             </div>
