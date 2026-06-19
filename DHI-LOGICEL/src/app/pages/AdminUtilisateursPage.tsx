@@ -67,7 +67,7 @@ export function AdminUtilisateursPage() {
         role: filtreRole !== 'tous' ? (filtreRole as UserRole) : undefined,
         recherche: debouncedSearch || undefined,
         bloque: undefined,
-        includeSupprimes: filtreStatutActifs ? undefined : 'true',
+        includeSupprimes: filtreStatutActifs ? undefined : 'seuls',
       });
       setPaginatedUsers(result.data);
       setTotal(result.pagination.total);
