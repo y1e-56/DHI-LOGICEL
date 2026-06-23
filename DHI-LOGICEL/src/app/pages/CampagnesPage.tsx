@@ -16,7 +16,7 @@ import { Loader2, Plus, TestTube, Users, Calendar, Search, X } from 'lucide-reac
 import { Campagne } from '../types';
 import { campaignService } from '../services/campaignService';
 import { useDebounce } from '../hooks/useDebounce';
-import { Pagination } from '../components/ui/Pagination';
+import { Pagination } from '../components/ui/pagination';
 import { toast } from 'sonner';
 
 export function CampagnesPage() {

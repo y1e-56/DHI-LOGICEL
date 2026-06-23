@@ -16,7 +16,7 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Projet } from '../types';
 import { projectService } from '../services/projectService';
 import { useDebounce } from '../hooks/useDebounce';
-import { Pagination } from '../components/ui/Pagination';
+import { Pagination } from '../components/ui/pagination';
 import { toast } from 'sonner';
 
 export function ProjetsPage() {

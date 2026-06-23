@@ -13,7 +13,7 @@ import { Users, ShieldOff, ShieldCheck, Plus, Search, UserCog, Trash2, RotateCcw
 import { User, UserRole } from '../types';
 import { userService } from '../services/userService';
 import { useDebounce } from '../hooks/useDebounce';
-import { Pagination } from '../components/ui/Pagination';
+import { Pagination } from '../components/ui/pagination';
 import { toast } from 'sonner';
 
 const roleConfig: Record<UserRole, { labelKey: string; color: string; bg: string }> = {

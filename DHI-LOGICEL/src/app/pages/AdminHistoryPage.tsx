@@ -9,7 +9,7 @@ import { Input } from '../components/ui/input';
 import { History, Clock, User, Search, CheckCircle, AlertTriangle, FileText, Loader2, ExternalLink, Bug, Users, UserPlus, LayoutDashboard } from 'lucide-react';
 import { HistoriqueAction } from '../types';
 import { useDebounce } from '../hooks/useDebounce';
-import { Pagination } from '../components/ui/Pagination';
+import { Pagination } from '../components/ui/pagination';
 import { useNavigate } from 'react-router';
 
 interface AuditEntry {

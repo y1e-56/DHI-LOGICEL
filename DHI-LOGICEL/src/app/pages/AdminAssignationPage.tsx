@@ -12,7 +12,7 @@ import { UserPlus, Search, Loader2, ExternalLink, Bug, Users, FolderKanban, Layo
 import { Fonctionnalite } from '../types';
 import { featureService } from '../services/featureService';
 import { useDebounce } from '../hooks/useDebounce';
-import { Pagination } from '../components/ui/Pagination';
+import { Pagination } from '../components/ui/pagination';
 
 export function AdminAssignationPage() {
   const { t } = useTranslation();

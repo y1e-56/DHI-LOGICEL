@@ -12,7 +12,7 @@ import { AlertTriangle, Clock, CheckCircle2, Bug, Search, Loader2, ArrowRight, X
 import { StatutAnomalie, Priorite, AnomalieFilters, Anomalie } from '../types';
 import { anomalyService } from '../services/anomalyService';
 import { useDebounce } from '../hooks/useDebounce';
-import { Pagination } from '../components/ui/Pagination';
+import { Pagination } from '../components/ui/pagination';
 
 const statutBadgeConfig: Record<StatutAnomalie, { labelKey: string; className: string }> = {
   nouvelle: { labelKey: 'statut.nouvelle', className: 'bg-red-100 text-red-700 border-red-200' },
