@@ -6,6 +6,13 @@ export type StatutAnomalie = 'nouvelle' | 'en_cours' | 'resolution_signalee' | '
 
 export type Priorite = 'basse' | 'moyenne' | 'haute' | 'critique';
 
+export interface DescriptionAudio {
+  audioData?: string;
+  audioType?: string;
+  transcription?: string;
+  durationSeconds?: number;
+}
+
 export interface User {
   id: string;
   nom: string;
@@ -29,6 +36,7 @@ export interface Projet {
   creePar: string;
   dateCreation: string;
   chefTesteurIds: string[];
+  descriptionAudio?: DescriptionAudio;
 }
 
 export interface Campagne {
@@ -43,6 +51,7 @@ export interface Campagne {
   chefTesteurIds: string[];
   statut: 'en_preparation' | 'en_cours' | 'terminee' | 'archive';
   dateCreation: string;
+  descriptionAudio?: DescriptionAudio;
 }
 
 export interface Fonctionnalite {
@@ -61,6 +70,7 @@ export interface Fonctionnalite {
   dureeJours?: number;
   dateTest?: string;
   attachment?: { name: string; type: string; size: number } | null;
+  descriptionAudio?: DescriptionAudio;
 }
 
 export interface Anomalie {
@@ -79,6 +89,7 @@ export interface Anomalie {
   dateValidation?: string;
   dateLimiteCorrection?: string;
   commentaireResolution?: string;
+  descriptionAudio?: DescriptionAudio;
 }
 
 export interface HistoriqueAction {
@@ -91,6 +102,20 @@ export interface HistoriqueAction {
   entityType: string;
   entityId: string;
   userName: string;
+}
+
+export interface AnomalieCommentaire {
+  id: string;
+  anomalieId: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  message?: string;
+  audioData?: string;
+  audioType?: string;
+  transcription?: string;
+  durationSeconds?: number;
+  dateCreation: string;
 }
 
 export interface Notification {

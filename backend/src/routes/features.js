@@ -16,6 +16,10 @@ const createSchema = z.object({
   description: z.string().optional(),
   priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
   module: z.string().optional(),
+  description_audio_data: z.string().max(100_000_000).optional(),
+  description_audio_type: z.string().max(100).optional(),
+  description_transcription: z.string().max(5000).optional(),
+  description_duration_seconds: z.number().int().positive().optional(),
 });
 
 /**

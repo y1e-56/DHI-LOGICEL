@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Loader2, Plus, Archive, Edit, FolderKanban, Trash2, Calendar, UserCog, Search, RotateCcw } from 'lucide-react';
 import { Checkbox } from '../components/ui/checkbox';
-import { Projet } from '../types';
+import { Projet, DescriptionAudio } from '../types';
 import { projectService } from '../services/projectService';
 import { getErrorMessage } from '../services/api';
 import { useDebounce } from '../hooks/useDebounce';
@@ -21,6 +21,8 @@ import { useAsyncAction } from '../hooks/useAsyncAction';
 import { Pagination } from '../components/ui/pagination';
 import { toDateInput } from '../utils/dateInput';
 import { toast } from 'sonner';
+import { VoiceDescriptionInput } from '../components/VoiceDescriptionInput';
+import { VoiceDescriptionDisplay } from '../components/VoiceDescriptionDisplay';
 
 export function ProjetsPage() {
   const { t } = useTranslation();
@@ -49,7 +51,8 @@ export function ProjetsPage() {
     description: '',
     dateDebut: '',
     dateFin: '',
-    chefTesteurIds: [] as string[]
+    chefTesteurIds: [] as string[],
+    descriptionAudio: undefined as DescriptionAudio | undefined,
   });
   const [errors, setErrors] = useState({
     nom: '',
@@ -104,7 +107,8 @@ export function ProjetsPage() {
         description: projet.description,
         dateDebut: toDateInput(projet.dateDebut),
         dateFin: toDateInput(projet.dateFin),
-        chefTesteurIds: [...projet.chefTesteurIds]
+        chefTesteurIds: [...projet.chefTesteurIds],
+        descriptionAudio: projet.descriptionAudio,
       });
     } else {
       setEditingProjet(null);
@@ -113,7 +117,8 @@ export function ProjetsPage() {
         description: '',
         dateDebut: '',
         dateFin: '',
-        chefTesteurIds: []
+        chefTesteurIds: [],
+        descriptionAudio: undefined,
       });
     }
     setErrors({ nom: '', dateDebut: '', dateFin: '' });
@@ -179,7 +184,7 @@ export function ProjetsPage() {
       }
 
       setDialogOpen(false);
-      setFormData({ nom: '', description: '', dateDebut: '', dateFin: '', chefTesteurIds: [] });
+      setFormData({ nom: '', description: '', dateDebut: '', dateFin: '', chefTesteurIds: [], descriptionAudio: undefined });
       fetchProjets();
     } catch (error: any) {
       if (error?.response?.status === 409) {
@@ -240,6 +245,10 @@ export function ProjetsPage() {
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Description du projet..."
                   rows={3}
+                />
+                <VoiceDescriptionInput
+                  value={formData.descriptionAudio}
+                  onChange={audio => setFormData({ ...formData, descriptionAudio: audio })}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -386,6 +395,7 @@ export function ProjetsPage() {
                   <CardDescription className="min-h-[3rem]">
                     {projet.description}
                   </CardDescription>
+                  <VoiceDescriptionDisplay audio={projet.descriptionAudio} />
                   <div className="text-sm text-gray-600 space-y-1">
                     <p>
                       <span className="font-medium">Début :</span>{' '}

@@ -115,9 +115,11 @@ export async function findById(id, client = null) {
 export async function create(data, client = null) {
   const c = client || pool;
   const result = await c.query(
-    `INSERT INTO features (campaign_id, name, description, priority, status, module)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [data.campaign_id, data.name, data.description || null, data.priority || 'medium', data.status || 'pending', data.module || null]
+    `INSERT INTO features (campaign_id, name, description, priority, status, module,
+       description_audio_data, description_audio_type, description_transcription, description_duration_seconds)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    [data.campaign_id, data.name, data.description || null, data.priority || 'medium', data.status || 'pending', data.module || null,
+     data.description_audio_data || null, data.description_audio_type || null, data.description_transcription || null, data.description_duration_seconds || null]
   );
   return result.rows[0];
 }
@@ -135,7 +137,8 @@ export async function findByName(campaignId, name, excludeId = null, client = nu
 
 export async function update(id, data, client = null) {
   const c = client || pool;
-  const allowedFields = ['name', 'description', 'priority', 'status', 'module'];
+  const allowedFields = ['name', 'description', 'priority', 'status', 'module',
+    'description_audio_data', 'description_audio_type', 'description_transcription', 'description_duration_seconds'];
   const sets = [];
   const values = [];
   let idx = 1;

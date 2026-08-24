@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { ArrowLeft, Plus, TestTube, AlertTriangle, CheckCircle2, Clock, User, Play, Flag, X, Users, Trash2, Search, Loader2, Sparkles, FileText } from 'lucide-react';
-import { Fonctionnalite, Priorite, StatutFonctionnalite, StatutAnomalie, TestCase, HistoriqueAction } from '../types';
+import { Fonctionnalite, Priorite, StatutFonctionnalite, StatutAnomalie, TestCase, HistoriqueAction, DescriptionAudio } from '../types';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAsyncAction } from '../hooks/useAsyncAction';
 import { campaignService } from '../services/campaignService';
@@ -23,6 +23,8 @@ import { dashboardService } from '../services/dashboardService';
 import { toast } from 'sonner';
 import { getErrorMessage } from '../services/api';
 import { HistoriqueTimeline } from '../components/HistoriqueTimeline';
+import { VoiceDescriptionInput } from '../components/VoiceDescriptionInput';
+import { VoiceDescriptionDisplay } from '../components/VoiceDescriptionDisplay';
 
 function joursRestants(iso: string): number {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
@@ -60,7 +62,8 @@ export function CampagneDetailPage() {
     nom: '', description: '', module: '',
     testeurAssigneId: '', developpeurAssigneId: '',
     priorite: 'moyenne' as Priorite,
-    dureeJours: ''
+    dureeJours: '',
+    descriptionAudio: undefined as DescriptionAudio | undefined,
   });
   const [assignData, setAssignData] = useState({
     fonctionnaliteId: '', testeurAssigneId: '', developpeurAssigneId: '',
@@ -353,7 +356,7 @@ export function CampagneDetailPage() {
   };
 
   const handleOpenDialog = () => {
-    setFormData({ nom: '', description: '', module: '', testeurAssigneId: '', developpeurAssigneId: '', priorite: 'moyenne' as Priorite, dureeJours: '' });
+    setFormData({ nom: '', description: '', module: '', testeurAssigneId: '', developpeurAssigneId: '', priorite: 'moyenne' as Priorite, dureeJours: '', descriptionAudio: undefined });
     setErreurNomFonctionnalite('');
     setDialogOpen(true);
   };
@@ -399,9 +402,10 @@ export function CampagneDetailPage() {
         statut: 'non_testee',
         priorite: formData.priorite,
         dateAssignation: new Date().toISOString(),
-        dureeJours: formData.dureeJours ? Number(formData.dureeJours) : undefined
+        dureeJours: formData.dureeJours ? Number(formData.dureeJours) : undefined,
+        descriptionAudio: formData.descriptionAudio,
       } as Fonctionnalite);
-      setFormData({ nom: '', description: '', module: '', testeurAssigneId: '', developpeurAssigneId: '', priorite: 'moyenne' as Priorite, dureeJours: '' });
+      setFormData({ nom: '', description: '', module: '', testeurAssigneId: '', developpeurAssigneId: '', priorite: 'moyenne' as Priorite, dureeJours: '', descriptionAudio: undefined });
       setErreurNomFonctionnalite('');
       setDialogOpen(false);
     } catch (error: any) {
@@ -494,6 +498,10 @@ export function CampagneDetailPage() {
                   <div className="space-y-2">
                     <Label htmlFor="description">{t('campagne.detail.description')}</Label>
                     <Textarea id="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder={t('campagne.detail.description_placeholder')} rows={3} />
+                    <VoiceDescriptionInput
+                      value={formData.descriptionAudio}
+                      onChange={audio => setFormData({ ...formData, descriptionAudio: audio })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>{t('campagne.detail.priority')}</Label>
@@ -608,6 +616,7 @@ export function CampagneDetailPage() {
                           <Badge className={getPrioriteBadge(fonctionnalite.priorite)}>{t(`priorite.${fonctionnalite.priorite}`)}</Badge>
                         </div>
                         <p className="text-sm text-gray-600 mb-2">{fonctionnalite.description}</p>
+                        <VoiceDescriptionDisplay audio={fonctionnalite.descriptionAudio} />
                         <div className="flex gap-4 text-xs text-gray-500">
                           <span><strong>{t('campagne.detail.module')}:</strong> {fonctionnalite.module}</span>
                           <span><strong>{t('campagne.detail.tester_label')}:</strong> {testeur?.prenom} {testeur?.nom || t('campagne.detail.not_assigned')}</span>
@@ -830,6 +839,7 @@ export function CampagneDetailPage() {
                           <Badge className={getPrioriteBadge(anomalie.priorite)}>{t(`priorite.${anomalie.priorite}`)}</Badge>
                         </div>
                         <p className="text-sm text-gray-600 mb-2 line-clamp-2">{anomalie.description}</p>
+                        <VoiceDescriptionDisplay audio={anomalie.descriptionAudio} />
                         <div className="flex gap-4 text-xs text-gray-500">
                           <span><strong>{t('campagne.detail.feature_label')}:</strong> {fonctionnalite?.nom}</span>
                           <span><strong>{t('campagne.detail.tester_label')}:</strong> {testeur?.prenom} {testeur?.nom}</span>

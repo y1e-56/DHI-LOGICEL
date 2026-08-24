@@ -101,7 +101,8 @@ export async function createCampaign(data) {
 
 export async function updateCampaign(id, data) {
   console.log('[campaignService] updateCampaign id=' + id + ' avec data:', data);
-  const scalarFields = ['name', 'objective', 'organization_mode', 'start_date', 'end_date', 'status'];
+  const scalarFields = ['name', 'objective', 'organization_mode', 'start_date', 'end_date', 'status',
+    'objective_audio_data', 'objective_audio_type', 'objective_transcription', 'objective_duration_seconds'];
   const hasScalarFields = scalarFields.some(field => data[field] !== undefined);
   const hasTestLeadIds = data.test_lead_ids !== undefined;
 

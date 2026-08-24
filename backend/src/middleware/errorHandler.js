@@ -16,6 +16,11 @@ export function errorHandler(err, _req, res, _next) {
     return;
   }
 
+  if (err?.type === 'entity.too.large' || err?.statusCode === 413) {
+    res.status(413).json({ message: 'Contenu trop volumineux. Réduisez la taille de l\'enregistrement audio' });
+    return;
+  }
+
   console.error('Unhandled error:', err);
   res.status(500).json({ message: 'Erreur interne du serveur' });
 }

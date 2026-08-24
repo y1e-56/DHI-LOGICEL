@@ -56,7 +56,7 @@ app.use(cors({
       },
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '100mb' }));
 
 app.use('/api-docs', helmet({ contentSecurityPolicy: false }), swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customSiteTitle: 'DHI Test Tracking API Docs',

@@ -88,12 +88,12 @@ export async function updateAnomaly(id, data, userId = null) {
       }
     }
 
-    // Une résolution ne peut être signalée que si l'anomalie a été prise en charge
+    // Une résolution peut être signalée directement (prise en charge implicite)
     if (data.status === 'resolution_signaled') {
       const existing = await db.anomalies.findById(id);
       if (!existing) throw new AppError('Anomalie non trouvée', 404);
-      if (existing.status !== 'in_progress') {
-        throw new AppError('Prenez d\'abord l\'anomalie en charge avant de signaler sa résolution', 400);
+      if (existing.status !== 'in_progress' && existing.status !== 'nouvelle') {
+        throw new AppError('Impossible de signaler la résolution dans le statut actuel', 400);
       }
     }
 

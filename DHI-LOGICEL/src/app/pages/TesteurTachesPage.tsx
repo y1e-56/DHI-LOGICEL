@@ -12,12 +12,14 @@ import { Textarea } from '../components/ui/textarea';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { CheckCircle2, XCircle, Clock, AlertTriangle, Sparkles, UserCheck, Search, ChevronDown, FileText, ClipboardList } from 'lucide-react';
-import { StatutFonctionnalite, Anomalie, TestCase } from '../types';
+import { StatutFonctionnalite, Anomalie, TestCase, DescriptionAudio } from '../types';
 import { suggerePriorite, suggereDeveloppeur } from '../services/aiService';
 import { testCaseService } from '../services/testCaseService';
 import { featureService } from '../services/featureService';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAsyncAction } from '../hooks/useAsyncAction';
+import { VoiceDescriptionInput } from '../components/VoiceDescriptionInput';
+import { VoiceDescriptionDisplay } from '../components/VoiceDescriptionDisplay';
 
 function joursRestants(iso: string): number {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
@@ -46,6 +48,7 @@ export function TesteurTachesPage() {
   const [fonctionnaliteSelectionnee, setFonctionnaliteSelectionnee] = useState<string | null>(null);
   const [nouveauStatut, setNouveauStatut] = useState<StatutFonctionnalite>('conforme');
   const [descriptionAnomalie, setDescriptionAnomalie] = useState('');
+  const [descriptionAudioAnomalie, setDescriptionAudioAnomalie] = useState<DescriptionAudio | undefined>(undefined);
   const [titreAnomalie, setTitreAnomalie] = useState('');
   const [developpeurSelectionne, setDeveloppeurSelectionne] = useState('');
   const [testCaseSelectionne, setTestCaseSelectionne] = useState('');
@@ -121,7 +124,8 @@ export function TesteurTachesPage() {
 
   const isFormAnomalieValide =
     nouveauStatut !== 'anomalie' ||
-    (!!titreAnomalie && !!descriptionAnomalie && !!developpeurSelectionne);
+    (!!titreAnomalie && !!descriptionAudioAnomalie && !!developpeurSelectionne) ||
+    (!!titreAnomalie && !!descriptionAnomalie.trim() && !!developpeurSelectionne);
 
   if (!currentUser || (currentUser.role !== 'testeur' && currentUser.role !== 'admin')) {
     return (
@@ -193,6 +197,7 @@ export function TesteurTachesPage() {
     setFonctionnaliteSelectionnee(fonctionnaliteId);
     setNouveauStatut(statut);
     setDescriptionAnomalie('');
+    setDescriptionAudioAnomalie(undefined);
     setTitreAnomalie('');
     setDeveloppeurSelectionne('');
     setTestCaseSelectionne('');
@@ -231,7 +236,7 @@ export function TesteurTachesPage() {
     if (nouveauStatut === 'anomalie') {
       if (fonctionnalite.statut === 'conforme') return;
       if (delaiDepasse) return;
-      if (!titreAnomalie || !descriptionAnomalie || !developpeurSelectionne) {
+      if (!titreAnomalie || (!descriptionAnomalie.trim() && !descriptionAudioAnomalie) || !developpeurSelectionne) {
         return;
       }
 
@@ -248,7 +253,8 @@ export function TesteurTachesPage() {
         statut: 'nouvelle',
         priorite,
         dateCreation: new Date().toISOString(),
-        dateLimiteCorrection: dateLimiteCorrection || undefined
+        dateLimiteCorrection: dateLimiteCorrection || undefined,
+        descriptionAudio: descriptionAudioAnomalie,
       };
 
       await ajouterAnomalie(nouvelleAnomalie);
@@ -440,6 +446,7 @@ export function TesteurTachesPage() {
                         {tachesOuvertes.has(fonctionnalite.id) && (
                           <>
                             <p className="text-sm text-gray-600 mb-2">{fonctionnalite.description}</p>
+                            <VoiceDescriptionDisplay audio={fonctionnalite.descriptionAudio} />
                             <div className="flex gap-4 text-xs text-gray-500">
                               <span><strong>{t('testeur.tasks.module')}:</strong> {fonctionnalite.module}</span>
                               <span><strong>{t('testeur.tasks.campagne')}:</strong> {campagne?.nom}</span>
@@ -606,6 +613,10 @@ export function TesteurTachesPage() {
                   onChange={(e) => setDescriptionAnomalie(e.target.value)}
                   placeholder={t('testeur.tasks.description_placeholder')}
                   rows={4}
+                />
+                <VoiceDescriptionInput
+                  value={descriptionAudioAnomalie}
+                  onChange={setDescriptionAudioAnomalie}
                 />
               </div>
 

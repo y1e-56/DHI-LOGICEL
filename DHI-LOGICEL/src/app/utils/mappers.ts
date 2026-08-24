@@ -19,6 +19,17 @@ import {
 } from '../types';
 
 // =====================
+// AUDIO
+// =====================
+// Les enregistrements récents sont stockés en URI data complète (data:audio/...;base64,...).
+// Pour les anciens (base64 brut sans préfixe), on reconstruit l'URI afin que le lecteur audio fonctionne.
+export const toAudioDataUri = (raw: string | null | undefined, mimeType?: string | null): string | undefined => {
+  if (!raw) return undefined;
+  if (raw.startsWith('data:')) return raw;
+  return `data:${mimeType || 'audio/webm'};base64,${raw}`;
+};
+
+// =====================
 // RÔLES
 // =====================
 const ROLE_FR_TO_EN: Record<UserRole, string> = {
@@ -140,6 +151,14 @@ export const mapProjetFromBackend = (p: any): Projet => ({
   creePar: String(p.created_by),
   dateCreation: p.created_at,
   chefTesteurIds: (p.test_lead_ids || []).map((id: any) => String(id)),
+  descriptionAudio: p.description_audio_data
+    ? {
+        audioData: toAudioDataUri(p.description_audio_data, p.description_audio_type),
+        audioType: p.description_audio_type || undefined,
+        transcription: p.description_transcription || undefined,
+        durationSeconds: p.description_duration_seconds != null ? Number(p.description_duration_seconds) : undefined,
+      }
+    : undefined,
 });
 
 export const mapProjetToBackend = (p: Partial<Projet>) => ({
@@ -147,6 +166,10 @@ export const mapProjetToBackend = (p: Partial<Projet>) => ({
   description: p.description,
   start_date: p.dateDebut,
   end_date: p.dateFin,
+  description_audio_data: p.descriptionAudio?.audioData,
+  description_audio_type: p.descriptionAudio?.audioType,
+  description_transcription: p.descriptionAudio?.transcription,
+  description_duration_seconds: p.descriptionAudio?.durationSeconds,
   test_lead_ids: p.chefTesteurIds?.map(id => parseInt(id)),
 });
 
@@ -165,6 +188,14 @@ export const mapCampagneFromBackend = (c: any): Campagne => ({
   chefTesteurIds: [...new Set((c.test_leads || []).map((id: any) => String(id)))],
   statut: STATUT_CAMPAGNE_EN_TO_FR[c.status] || 'en_preparation',
   dateCreation: c.created_at,
+  descriptionAudio: c.objective_audio_data
+    ? {
+        audioData: toAudioDataUri(c.objective_audio_data, c.objective_audio_type),
+        audioType: c.objective_audio_type || undefined,
+        transcription: c.objective_transcription || undefined,
+        durationSeconds: c.objective_duration_seconds != null ? Number(c.objective_duration_seconds) : undefined,
+      }
+    : undefined,
 });
 
 const STATUT_CAMPAGNE_FR_TO_EN: Record<string, string> = {
@@ -193,6 +224,10 @@ export const mapCampagneToBackend = (c: Partial<Campagne>) => ({
   test_lead_ids: c.chefTesteurIds ? [...new Set(c.chefTesteurIds.map(id => parseInt(id)))] : undefined,
   testers: c.equipeTesteurs ? [...new Set(c.equipeTesteurs.map(id => parseInt(id)))] : undefined,
   developers: c.equipeDeveloppeurs ? [...new Set(c.equipeDeveloppeurs.map(id => parseInt(id)))] : undefined,
+  objective_audio_data: c.descriptionAudio?.audioData,
+  objective_audio_type: c.descriptionAudio?.audioType,
+  objective_transcription: c.descriptionAudio?.transcription,
+  objective_duration_seconds: c.descriptionAudio?.durationSeconds,
 });
 
 // =====================
@@ -219,6 +254,14 @@ export const mapFonctionnaliteFromBackend = (f: any): Fonctionnalite => {
     attachment: f.attachment_name
       ? { name: f.attachment_name, type: f.attachment_type || '', size: f.attachment_size || 0 }
       : null,
+    descriptionAudio: f.description_audio_data
+      ? {
+          audioData: toAudioDataUri(f.description_audio_data, f.description_audio_type),
+          audioType: f.description_audio_type || undefined,
+          transcription: f.description_transcription || undefined,
+          durationSeconds: f.description_duration_seconds != null ? Number(f.description_duration_seconds) : undefined,
+        }
+      : undefined,
   };
 };
 
@@ -229,6 +272,10 @@ export const mapFonctionnaliteToBackend = (f: Partial<Fonctionnalite>) => ({
   priority: f.priorite ? mapPriorityToBackend(f.priorite) : 'medium',
   status: f.statut ? mapFeatureStatusToBackend(f.statut) : undefined,
   module: f.module || undefined,
+  description_audio_data: f.descriptionAudio?.audioData,
+  description_audio_type: f.descriptionAudio?.audioType,
+  description_transcription: f.descriptionAudio?.transcription,
+  description_duration_seconds: f.descriptionAudio?.durationSeconds,
 });
 
 // =====================
@@ -250,6 +297,14 @@ export const mapAnomalieFromBackend = (a: any): Anomalie => ({
   dateValidation: a.status === 'validated' ? a.updated_at : undefined,
   commentaireResolution: a.resolution_description,
   dateLimiteCorrection: a.correction_due_date || undefined,
+  descriptionAudio: a.description_audio_data
+    ? {
+        audioData: toAudioDataUri(a.description_audio_data, a.description_audio_type),
+        audioType: a.description_audio_type || undefined,
+        transcription: a.description_transcription || undefined,
+        durationSeconds: a.description_duration_seconds != null ? Number(a.description_duration_seconds) : undefined,
+      }
+    : undefined,
 });
 
 export const mapAnomalieToBackend = (a: Partial<Anomalie>) => ({
@@ -260,6 +315,10 @@ export const mapAnomalieToBackend = (a: Partial<Anomalie>) => ({
   assigned_to: a.developpeurId ? parseInt(a.developpeurId) : undefined,
   description: a.description,
   correction_due_date: a.dateLimiteCorrection || undefined,
+  description_audio_data: a.descriptionAudio?.audioData,
+  description_audio_type: a.descriptionAudio?.audioType,
+  description_transcription: a.descriptionAudio?.transcription,
+  description_duration_seconds: a.descriptionAudio?.durationSeconds,
 });
 
 // =====================

@@ -18,6 +18,10 @@ const createSchema = z.object({
   developers: z.array(z.number()).optional(),
   release_id: z.number().int().nullable().optional(),
   environment_id: z.number().int().nullable().optional(),
+  objective_audio_data: z.string().max(100_000_000).optional(),
+  objective_audio_type: z.string().max(100).optional(),
+  objective_transcription: z.string().max(5000).optional(),
+  objective_duration_seconds: z.number().int().positive().optional(),
 });
 
 /**

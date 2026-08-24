@@ -12,3 +12,4 @@ export * as notifications from './notifications.js';
 export * as history from './history.js';
 export * as testCases from './testCases.js';
 export * as stats from './stats.js';
+export * as anomalyComments from './anomalyComments.js';

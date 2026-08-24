@@ -10,6 +10,7 @@ import teamsRouter from './teams.js';
 import dashboardRouter from './dashboard.js';
 import testCasesRouter from './test-cases.js';
 import chatRouter from './chat.js';
+import anomalyCommentsRouter from './anomalyComments.js';
 
 const router = Router();
 
@@ -24,5 +25,6 @@ router.use('/teams', teamsRouter);
 router.use('/dashboard', dashboardRouter);
 router.use('/test-cases', testCasesRouter);
 router.use('/chat', chatRouter);
+router.use('/anomaly-comments', anomalyCommentsRouter);
 
 export default router;

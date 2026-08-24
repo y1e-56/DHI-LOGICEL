@@ -15,6 +15,7 @@ import { AlertTriangle, Clock, CheckCircle2, Code, Play, Search, ChevronDown } f
 import { StatutAnomalie } from '../types';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAsyncAction } from '../hooks/useAsyncAction';
+import { VoiceDescriptionDisplay } from '../components/VoiceDescriptionDisplay';
 
 function joursRestants(iso: string): number {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
@@ -291,6 +292,7 @@ export function DeveloppeurAnomaliesPage() {
                         <p className="text-sm text-gray-600 line-clamp-2 mb-2">
                           {anomalie.description}
                         </p>
+                        <VoiceDescriptionDisplay audio={anomalie.descriptionAudio} />
                       </div>
                       <div className="flex gap-2">
                         {anomalie.statut === 'nouvelle' && (
@@ -308,7 +310,7 @@ export function DeveloppeurAnomaliesPage() {
                             {t('developpeur.anomalies.take_charge')}
                           </Button>
                         )}
-                        {anomalie.statut === 'en_cours' && (
+                        {(anomalie.statut === 'en_cours' || anomalie.statut === 'nouvelle') && (
                           <Button
                             size="sm"
                             variant="outline"

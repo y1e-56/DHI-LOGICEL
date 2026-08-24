@@ -14,6 +14,7 @@ import { anomalyService } from '../services/anomalyService';
 import { useDebounce } from '../hooks/useDebounce';
 import { Pagination } from '../components/ui/pagination';
 import { keyboardActivateProps } from '../utils/pressable';
+import { VoiceDescriptionDisplay } from '../components/VoiceDescriptionDisplay';
 
 function joursRestants(iso: string): number {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
@@ -220,6 +221,7 @@ export function AdminAllAnomaliesPage() {
                         <p className="text-sm text-slate-600 line-clamp-2 mb-2">
                           {anomalie.description}
                         </p>
+                        <VoiceDescriptionDisplay audio={anomalie.descriptionAudio} />
                       </div>
                       <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors flex-shrink-0 mt-1" />
                     </div>

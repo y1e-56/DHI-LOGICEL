@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Checkbox } from '../components/ui/checkbox';
 import { Loader2, Plus, TestTube, Users, Calendar, Search, X } from 'lucide-react';
-import { Campagne, Projet } from '../types';
+import { Campagne, Projet, DescriptionAudio } from '../types';
 import { campaignService } from '../services/campaignService';
 import { getErrorMessage } from '../services/api';
 import { useDebounce } from '../hooks/useDebounce';
@@ -21,6 +21,8 @@ import { useAsyncAction } from '../hooks/useAsyncAction';
 import { Pagination } from '../components/ui/pagination';
 import { toDateInput } from '../utils/dateInput';
 import { toast } from 'sonner';
+import { VoiceDescriptionInput } from '../components/VoiceDescriptionInput';
+import { VoiceDescriptionDisplay } from '../components/VoiceDescriptionDisplay';
 
 export function CampagnesPage() {
   const { t } = useTranslation();
@@ -53,7 +55,8 @@ export function CampagnesPage() {
     dateFin: '',
     chefTesteurIds: [] as string[],
     equipeTesteurs: [] as string[],
-    equipeDeveloppeurs: [] as string[]
+    equipeDeveloppeurs: [] as string[],
+    descriptionAudio: undefined as DescriptionAudio | undefined,
   });
   const [errors, setErrors] = useState({
     nom: '',
@@ -110,7 +113,8 @@ export function CampagnesPage() {
         dateFin: toDateInput(campagne.dateFin),
         chefTesteurIds: campagne.chefTesteurIds || [],
         equipeTesteurs: campagne.equipeTesteurs,
-        equipeDeveloppeurs: campagne.equipeDeveloppeurs
+        equipeDeveloppeurs: campagne.equipeDeveloppeurs,
+        descriptionAudio: campagne.descriptionAudio,
       });
     } else {
       setEditingCampagne(null);
@@ -122,7 +126,8 @@ export function CampagnesPage() {
         dateFin: '',
         chefTesteurIds: [currentUser.id],
         equipeTesteurs: [],
-        equipeDeveloppeurs: []
+        equipeDeveloppeurs: [],
+        descriptionAudio: undefined,
       });
     }
     setErrors({ nom: '', projetId: '', dateDebut: '', dateFin: '' });
@@ -315,6 +320,10 @@ export function CampagnesPage() {
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder={t('campagne.list.description_placeholder')}
                   rows={3}
+                />
+                <VoiceDescriptionInput
+                  value={formData.descriptionAudio}
+                  onChange={audio => setFormData({ ...formData, descriptionAudio: audio })}
                 />
               </div>
 
@@ -525,6 +534,7 @@ export function CampagnesPage() {
                   <p className="text-sm text-gray-600 min-h-[2.5rem]">
                     {campagne.description}
                   </p>
+                  <VoiceDescriptionDisplay audio={campagne.descriptionAudio} />
                   <div className="flex items-center gap-4 text-sm text-gray-600">
                     <div className="flex items-center gap-1">
                       <Users className="w-4 h-4" />

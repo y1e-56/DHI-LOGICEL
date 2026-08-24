@@ -13,6 +13,10 @@ const createSchema = z.object({
   end_date: z.string().optional(),
   test_lead_ids: z.array(z.number()).optional(),
   product_id: z.number().int().nullable().optional(),
+  description_audio_data: z.string().max(100_000_000).optional(),
+  description_audio_type: z.string().max(100).optional(),
+  description_transcription: z.string().max(5000).optional(),
+  description_duration_seconds: z.number().int().positive().optional(),
 });
 
 const updateSchema = z.object({
@@ -22,6 +26,10 @@ const updateSchema = z.object({
   end_date: z.string().optional(),
   test_lead_ids: z.array(z.number()).optional(),
   product_id: z.number().int().nullable().optional(),
+  description_audio_data: z.string().max(100_000_000).optional(),
+  description_audio_type: z.string().max(100).optional(),
+  description_transcription: z.string().max(5000).optional(),
+  description_duration_seconds: z.number().int().positive().optional(),
 });
 
 /**
