@@ -7,13 +7,17 @@ import bus from '../lib/eventBus.js';
 
 const router = Router();
 
-const authRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: 'Trop de tentatives depuis cette adresse. Réessayez plus tard.' },
-});
+// Limite désactivable en local/e2e via DISABLE_AUTH_RATE_LIMIT=1,
+// et ajustable via AUTH_RATE_LIMIT_MAX (défaut : 20 req / 15 min).
+const authRateLimiter = process.env.DISABLE_AUTH_RATE_LIMIT === '1'
+  ? (_req, _res, next) => next()
+  : rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '20', 10),
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { message: 'Trop de tentatives depuis cette adresse. Réessayez plus tard.' },
+    });
 
 const registerSchema = z.object({
   email: z.string().email('Email invalide'),

@@ -37,6 +37,43 @@ export interface Projet {
   dateCreation: string;
   chefTesteurIds: string[];
   descriptionAudio?: DescriptionAudio;
+  produitId?: string | null;
+}
+
+export interface Produit {
+  id: string;
+  nom: string;
+  description: string;
+  estArchive: boolean;
+  ownerId?: string | null;
+  qualityManagerId?: string | null;
+  creePar?: string | null;
+  dateCreation: string;
+  dateModification: string;
+  nbProjets: number;
+  nbVersions: number;
+  nbEnvironnements: number;
+}
+
+export interface ReleaseProduit {
+  id: string;
+  produitId: string;
+  version: string;
+  description: string;
+  statut: 'planned' | 'in_progress' | 'released' | 'cancelled';
+  datePrevue?: string | null;
+  livreeLe?: string | null;
+  dateCreation: string;
+}
+
+export interface EnvironnementProduit {
+  id: string;
+  produitId: string;
+  nom: string;
+  type: 'development' | 'integration' | 'staging' | 'production';
+  description: string;
+  actif: boolean;
+  dateCreation: string;
 }
 
 export interface Campagne {
@@ -52,6 +89,8 @@ export interface Campagne {
   statut: 'en_preparation' | 'en_cours' | 'terminee' | 'archive';
   dateCreation: string;
   descriptionAudio?: DescriptionAudio;
+  versionId?: string | null;
+  environnementId?: string | null;
 }
 
 export interface Fonctionnalite {

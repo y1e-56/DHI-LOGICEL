@@ -159,6 +159,7 @@ export const mapProjetFromBackend = (p: any): Projet => ({
         durationSeconds: p.description_duration_seconds != null ? Number(p.description_duration_seconds) : undefined,
       }
     : undefined,
+  produitId: p.product_id != null ? String(p.product_id) : null,
 });
 
 export const mapProjetToBackend = (p: Partial<Projet>) => ({
@@ -171,6 +172,7 @@ export const mapProjetToBackend = (p: Partial<Projet>) => ({
   description_transcription: p.descriptionAudio?.transcription,
   description_duration_seconds: p.descriptionAudio?.durationSeconds,
   test_lead_ids: p.chefTesteurIds?.map(id => parseInt(id)),
+  product_id: p.produitId ? parseInt(p.produitId, 10) : null,
 });
 
 // =====================
@@ -196,6 +198,8 @@ export const mapCampagneFromBackend = (c: any): Campagne => ({
         durationSeconds: c.objective_duration_seconds != null ? Number(c.objective_duration_seconds) : undefined,
       }
     : undefined,
+  versionId: c.release_id != null ? String(c.release_id) : null,
+  environnementId: c.environment_id != null ? String(c.environment_id) : null,
 });
 
 const STATUT_CAMPAGNE_FR_TO_EN: Record<string, string> = {
@@ -228,6 +232,8 @@ export const mapCampagneToBackend = (c: Partial<Campagne>) => ({
   objective_audio_type: c.descriptionAudio?.audioType,
   objective_transcription: c.descriptionAudio?.transcription,
   objective_duration_seconds: c.descriptionAudio?.durationSeconds,
+  release_id: c.versionId ? parseInt(c.versionId, 10) : null,
+  environment_id: c.environnementId ? parseInt(c.environnementId, 10) : null,
 });
 
 // =====================
