@@ -4,6 +4,15 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ProjetsPage } from './pages/ProjetsPage';
 import { ProduitsPage } from './pages/ProduitsPage';
 import { ProduitDetailPage } from './pages/ProduitDetailPage';
+import { ProjetDetailPage } from './pages/ProjetDetailPage';
+import { FeatureDetailPage } from './pages/FeatureDetailPage';
+import { CouverturePage } from './pages/CouverturePage';
+import { DetteQualitePage } from './pages/DetteQualitePage';
+import { GoNogoPage } from './pages/GoNogoPage';
+import { RapportsPage } from './pages/RapportsPage';
+import { AlertesPage } from './pages/AlertesPage';
+import { AuditTrailPage } from './pages/AuditTrailPage';
+import { NotificationsConfigPage } from './pages/NotificationsConfigPage';
 import { CampagnesPage } from './pages/CampagnesPage';
 import { AdminUtilisateursPage } from './pages/AdminUtilisateursPage';
 import { AdminHistoryPage } from './pages/AdminHistoryPage';
@@ -38,6 +47,15 @@ export const router = createBrowserRouter([
       { path: '/produits', element: <ProduitsPage /> },
   { path: '/produits/:produitId', element: <ProduitDetailPage /> },
       { path: '/projets', element: <ProjetsPage /> },
+      { path: '/projets/:projetId', element: <ProjetDetailPage /> },
+      { path: '/fonctionnalites/:featureId', element: <FeatureDetailPage /> },
+      { path: '/couverture', element: <CouverturePage /> },
+      { path: '/dette-qualite', element: <DetteQualitePage /> },
+      { path: '/go-nogo', element: <GoNogoPage /> },
+      { path: '/rapports', element: <RapportsPage /> },
+      { path: '/alertes', element: <AlertesPage /> },
+      { path: '/audit-trail', element: <AuditTrailPage /> },
+      { path: '/notifications-config', element: <NotificationsConfigPage /> },
       { path: '/campagnes', element: <CampagnesPage /> },
       { path: '/campagnes/:campagneId', element: <CampagneDetailPage /> },
       { path: '/admin/utilisateurs', element: <AdminUtilisateursPage /> },

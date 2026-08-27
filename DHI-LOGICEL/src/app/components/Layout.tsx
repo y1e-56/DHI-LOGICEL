@@ -7,7 +7,7 @@ import { useNavigate, useLocation, Outlet } from 'react-router';
 import {
   Bell, LogOut, Menu, Home, FolderKanban, TestTube,
   BarChart3, ChevronRight, Bug, Users, Sparkles, Languages, KeyRound, Eye, EyeOff, Search,
-  ClipboardList, FileText, Settings, Shield, Clock, UserPlus, Package
+  ClipboardList, FileText, Settings, Shield, Clock, UserPlus, Package, Layers, AlertTriangle, Rocket
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 import { Breadcrumbs } from './ui/Breadcrumbs';
@@ -46,7 +46,6 @@ export function Layout() {
   const [pwdVisible, setPwdVisible] = useState({ current: false, next: false, confirm: false });
   const [pwdLoading, setPwdLoading] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [recentOpen, setRecentOpen] = useState(false);
   const [recentPages, setRecentPages] = useState<{ path: string; label: string; time: number }[]>([]);
   const breadcrumbItems = useBreadcrumbs();
 
@@ -120,7 +119,7 @@ export function Layout() {
     {
       label: '',
       items: [
-        { path: '/dashboard', label: t('nav.dashboard'), icon: Home, roles: ['admin', 'chef_testeur', 'testeur', 'developpeur'] },
+        { path: '/dashboard', label: t('nav.dashboard'), icon: Home, roles: ['admin', 'chef_testeur', 'testeur', 'developpeur', 'directeur'] },
       ],
     },
     {
@@ -151,6 +150,13 @@ export function Layout() {
         { path: '/admin/utilisateurs', label: t('nav.users'), icon: Users, roles: ['admin'] },
         { path: '/admin/history', label: t('nav.history'), icon: FileText, roles: ['admin'] },
         { path: '/reporting', label: t('nav.reporting'), icon: BarChart3, roles: ['admin', 'chef_testeur'] },
+        { path: '/couverture', label: 'Couverture', icon: Layers, roles: ['admin', 'chef_testeur'] },
+        { path: '/dette-qualite', label: 'Dette qualité', icon: AlertTriangle, roles: ['admin', 'chef_testeur'] },
+        { path: '/go-nogo', label: 'Go / No-Go', icon: Rocket, roles: ['admin', 'chef_testeur', 'directeur'] },
+        { path: '/rapports', label: 'Rapports', icon: FileText, roles: ['admin', 'chef_testeur', 'directeur'] },
+        { path: '/alertes', label: 'Alertes', icon: Bell, roles: ['admin', 'chef_testeur', 'testeur'] },
+        { path: '/audit-trail', label: 'Audit trail', icon: Clock, roles: ['admin', 'chef_testeur'] },
+        { path: '/notifications-config', label: 'Notifications', icon: Bell, roles: ['admin', 'chef_testeur', 'testeur', 'developpeur'] },
       ],
     },
   ];
@@ -366,7 +372,7 @@ export function Layout() {
                   {recentPages.slice(0, 5).map((page, i) => (
                     <DropdownMenuItem
                       key={`${page.path}-${i}`}
-                      onClick={() => { navigate(page.path); setRecentOpen(false); }}
+                      onClick={() => { navigate(page.path); }}
                       className="flex items-center gap-2 cursor-pointer"
                     >
                       <Clock className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
