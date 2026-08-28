@@ -13,6 +13,7 @@ import { mapCampagneFromBackend, mapNotificationFromBackend } from '../utils/map
 import { userService } from '../services/userService';
 import { testCaseService } from '../services/testCaseService';
 import { productService } from '../services/productService';
+import { demoDataService } from '../services/demoDataService';
 
 interface DataContextType {
   projets: Projet[];
@@ -79,8 +80,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const { historiqueActions, ajouterHistorique } = useHistorique();
 
   const [users, setUsers] = useState<User[]>([]);
-  const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [produits, setProduits] = useState<Produit[]>([]);
   const refreshUsers = useCallback(async () => {
     try {
       setUsers(await userService.getAll());
