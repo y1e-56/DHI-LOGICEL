@@ -162,6 +162,7 @@ export interface AnomalieCommentaire {
 export interface Notification {
   id: string;
   userId: string;
+  destinataireId?: string;
   type: 'assignation' | 'anomalie' | 'resolution' | 'validation' | 'information' | 'autre';
   titre: string;
   message: string;
@@ -178,6 +179,7 @@ export interface TestCase {
   expectedResult?: string;
   status?: string;
   priority?: Priorite;
+  campagneId?: string;
   dateCreation?: string;
 }
 

@@ -38,10 +38,16 @@ api.interceptors.response.use(
   }
 );
 
-export function getErrorMessage(error: AxiosError<{ message?: string }>): string {
-  if (error.response?.data?.message) return error.response.data.message;
-  if (error.message === 'Network Error') return 'Erreur réseau : vérifiez que le backend est démarré';
-  return error.message || 'Erreur inconnue';
+export function getErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const data = (error as { response?: { data?: { message?: string } } }).response?.data;
+    if (data?.message) return data.message;
+  }
+  if (error instanceof Error) {
+    if (error.message === 'Network Error') return 'Erreur réseau : vérifiez que le backend est démarré';
+    return error.message;
+  }
+  return 'Erreur inconnue';
 }
 
 export default api;

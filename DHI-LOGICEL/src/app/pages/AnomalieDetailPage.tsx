@@ -272,7 +272,7 @@ export function AnomalieDetailPage() {
             </CardContent>
           </Card>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'details' | 'commentaires')} className="space-y-4">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="details">{t('anomalie.detail.details_tab')}</TabsTrigger>
               <TabsTrigger value="commentaires">
@@ -318,9 +318,9 @@ export function AnomalieDetailPage() {
                           {c.audioData && (
                             <div className="flex flex-col gap-1.5 mt-1">
                               <audio controls src={c.audioData} className="h-9 max-w-full" />
-                              {c.durationSeconds > 0 && (
+                              {(c.durationSeconds ?? 0) > 0 && (
                                 <p className="text-[10px] text-slate-400 font-mono">
-                                  {Math.floor(c.durationSeconds / 60)}:{String(c.durationSeconds % 60).padStart(2, '0')}
+                                  {Math.floor((c.durationSeconds ?? 0) / 60)}:{String((c.durationSeconds ?? 0) % 60).padStart(2, '0')}
                                 </p>
                               )}
                             </div>

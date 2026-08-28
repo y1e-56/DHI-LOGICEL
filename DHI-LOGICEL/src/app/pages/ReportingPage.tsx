@@ -65,6 +65,7 @@ export function ReportingPage() {
   const statutFonctionnaliteLabel = (s: StatutFonctionnalite): string =>
     ({
       non_testee: t('reporting.pdf_not_tested'),
+      en_cours: t('reporting.pdf_in_progress'),
       conforme: t('reporting.pdf_compliant'),
       anomalie: t('reporting.pdf_with_anomalies'),
     })[s] || s;

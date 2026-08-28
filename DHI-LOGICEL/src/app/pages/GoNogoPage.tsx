@@ -47,7 +47,7 @@ export function GoNogoPage() {
     const projTC = testCases.filter((tc) => campagnes.some((c) => c.projetId === projetId && c.id === tc.campagneId));
     const ouvertes = projAnomalies.filter((a) => !['cloturee', 'validee'].includes(a.statut)).length;
     const critiques = projAnomalies.filter((a) => a.priorite === 'critique' && !['cloturee', 'validee'].includes(a.statut)).length;
-    const passants = projTC.filter((tc) => tc.statut === 'passe').length;
+    const passants = projTC.filter((tc) => tc.status === 'passe').length;
     const taux = projTC.length > 0 ? Math.round((passants / projTC.length) * 100) : 0;
     return { total: projAnomalies.length, ouvertes, critiques, taux, totalTC: projTC.length };
   }, [projetId, anomalies, testCases, campagnes]);

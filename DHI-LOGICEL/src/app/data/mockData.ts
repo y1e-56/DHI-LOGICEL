@@ -66,7 +66,8 @@ export const projets: Projet[] = [
     dateFin: '2026-06-30',
     statut: 'actif',
     creePar: '1',
-    dateCreation: '2026-01-10'
+    dateCreation: '2026-01-10',
+    chefTesteurIds: ['2']
   },
   {
     id: 'p2',
@@ -76,7 +77,8 @@ export const projets: Projet[] = [
     dateFin: '2026-08-31',
     statut: 'actif',
     creePar: '1',
-    dateCreation: '2026-02-20'
+    dateCreation: '2026-02-20',
+    chefTesteurIds: ['2']
   },
   {
     id: 'p3',
@@ -86,7 +88,8 @@ export const projets: Projet[] = [
     dateFin: '2026-02-28',
     statut: 'archive',
     creePar: '1',
-    dateCreation: '2025-09-15'
+    dateCreation: '2025-09-15',
+    chefTesteurIds: []
   }
 ];
 
@@ -102,7 +105,9 @@ export const campagnes: Campagne[] = [
     equipeDeveloppeurs: ['5', '6'],
     chefTesteurIds: ['2'],
     statut: 'en_cours',
-    dateCreation: '2026-04-25'
+    dateCreation: '2026-04-25',
+    objectif: 'Valider le parcours d\'authentification',
+    modeOrganisation: 'fonctionnalites'
   },
   {
     id: 'c2',
@@ -115,7 +120,9 @@ export const campagnes: Campagne[] = [
     equipeDeveloppeurs: ['5', '6'],
     chefTesteurIds: ['2'],
     statut: 'en_preparation',
-    dateCreation: '2026-05-15'
+    dateCreation: '2026-05-15',
+    objectif: 'Couvrir le catalogue et la recherche',
+    modeOrganisation: 'fonctionnalites'
   },
   {
     id: 'c3',
@@ -128,7 +135,9 @@ export const campagnes: Campagne[] = [
     equipeDeveloppeurs: ['6'],
     chefTesteurIds: ['2'],
     statut: 'en_cours',
-    dateCreation: '2026-05-05'
+    dateCreation: '2026-05-05',
+    objectif: 'Tester le module de paie',
+    modeOrganisation: 'fonctionnalites'
   }
 ];
 
@@ -265,7 +274,10 @@ export const historiqueActions: HistoriqueAction[] = [
     userId: '4',
     action: 'Anomalie créée',
     commentaire: 'Anomalie détectée lors des tests de réinitialisation',
-    date: '2026-05-05T10:30:00'
+    date: '2026-05-05T10:30:00',
+    entityType: 'anomalie',
+    entityId: 'a1',
+    userName: 'Marie Rousseau'
   },
   {
     id: 'h2',
@@ -273,14 +285,20 @@ export const historiqueActions: HistoriqueAction[] = [
     userId: '5',
     action: 'Prise en charge',
     commentaire: 'Je regarde le problème de configuration SMTP',
-    date: '2026-05-05T11:00:00'
+    date: '2026-05-05T11:00:00',
+    entityType: 'anomalie',
+    entityId: 'a1',
+    userName: 'Paul Moreau'
   },
   {
     id: 'h3',
     anomalieId: 'a1',
     userId: '5',
     action: 'Statut changé : En cours',
-    date: '2026-05-05T11:00:00'
+    date: '2026-05-05T11:00:00',
+    entityType: 'anomalie',
+    entityId: 'a1',
+    userName: 'Paul Moreau'
   },
   {
     id: 'h4',
@@ -288,7 +306,10 @@ export const historiqueActions: HistoriqueAction[] = [
     userId: '5',
     action: 'Résolution signalée',
     commentaire: 'Configuration SMTP corrigée. Les emails sont maintenant envoyés correctement.',
-    date: '2026-05-18T14:20:00'
+    date: '2026-05-18T14:20:00',
+    entityType: 'anomalie',
+    entityId: 'a1',
+    userName: 'Paul Moreau'
   },
   {
     id: 'h5',
@@ -296,14 +317,20 @@ export const historiqueActions: HistoriqueAction[] = [
     userId: '3',
     action: 'Anomalie créée',
     commentaire: 'Faille de sécurité détectée',
-    date: '2026-05-06T09:15:00'
+    date: '2026-05-06T09:15:00',
+    entityType: 'anomalie',
+    entityId: 'a2',
+    userName: 'Luc Bernard'
   },
   {
     id: 'h6',
     anomalieId: 'a2',
     userId: '6',
     action: 'Statut changé : En cours',
-    date: '2026-05-06T10:30:00'
+    date: '2026-05-06T10:30:00',
+    entityType: 'anomalie',
+    entityId: 'a2',
+    userName: 'Julie Simon'
   },
   {
     id: 'h7',
@@ -311,7 +338,10 @@ export const historiqueActions: HistoriqueAction[] = [
     userId: '4',
     action: 'Anomalie créée',
     commentaire: 'Erreur critique dans le calcul de paie',
-    date: '2026-05-12T16:45:00'
+    date: '2026-05-12T16:45:00',
+    entityType: 'anomalie',
+    entityId: 'a3',
+    userName: 'Marie Rousseau'
   }
 ];
 

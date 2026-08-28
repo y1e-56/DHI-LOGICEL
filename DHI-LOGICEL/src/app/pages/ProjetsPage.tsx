@@ -191,7 +191,10 @@ export function ProjetsPage() {
         await ajouterProjet({
           ...formData,
           produitId: formData.produitId || null,
-          statut: 'actif' as const
+          statut: 'actif' as const,
+          id: '',
+          creePar: '',
+          dateCreation: ''
         });
       }
 

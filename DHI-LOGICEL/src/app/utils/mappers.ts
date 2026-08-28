@@ -79,12 +79,14 @@ export const mapAnomalyStatusToFrontend = (s: string): StatutAnomalie =>
 // =====================
 const FEATURE_STATUS_FR_TO_EN: Record<StatutFonctionnalite, string> = {
   non_testee: 'pending',
+  en_cours: 'in_progress',
   conforme: 'conforme',
   anomalie: 'anomaly_detected',
 };
 
 const FEATURE_STATUS_EN_TO_FR: Record<string, StatutFonctionnalite> = {
   pending: 'non_testee',
+  in_progress: 'en_cours',
   conforme: 'conforme',
   anomaly_detected: 'anomalie',
 };
@@ -183,11 +185,13 @@ export const mapCampagneFromBackend = (c: any): Campagne => ({
   nom: c.name,
   projetId: String(c.project_id),
   description: c.objective || '',
+  objectif: c.objective || '',
+  modeOrganisation: c.mode_organisation || 'fonctionnalites',
   dateDebut: c.start_date,
   dateFin: c.end_date,
-  equipeTesteurs: [...new Set((c.testers || []).map((id: any) => String(id)))],
-  equipeDeveloppeurs: [...new Set((c.developers || []).map((id: any) => String(id)))],
-  chefTesteurIds: [...new Set((c.test_leads || []).map((id: any) => String(id)))],
+  equipeTesteurs: Array.from(new Set<string>((c.testers || []).map((id: any) => String(id)))),
+  equipeDeveloppeurs: Array.from(new Set<string>((c.developers || []).map((id: any) => String(id)))),
+  chefTesteurIds: Array.from(new Set<string>((c.test_leads || []).map((id: any) => String(id)))),
   statut: STATUT_CAMPAGNE_EN_TO_FR[c.status] || 'en_preparation',
   dateCreation: c.created_at,
   descriptionAudio: c.objective_audio_data
