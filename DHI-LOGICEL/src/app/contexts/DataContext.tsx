@@ -79,6 +79,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const { historiqueActions, ajouterHistorique } = useHistorique();
 
   const [users, setUsers] = useState<User[]>([]);
+  const [testCases, setTestCases] = useState<TestCase[]>([]);
+  const [produits, setProduits] = useState<Produit[]>([]);
   const refreshUsers = useCallback(async () => {
     try {
       setUsers(await userService.getAll());
@@ -121,6 +123,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (currentUser && !dataLoaded) {
+      demoDataService.seedTout();
       refreshAll();
       setDataLoaded(true);
     }

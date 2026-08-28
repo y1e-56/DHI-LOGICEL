@@ -492,7 +492,7 @@ export function CampagneDetailPage() {
   const { pending: ajoutFonctionnalitePending, run: ajouterFonctionnaliteAction } = useAsyncAction(handleAjouterFonctionnalite);
 
   const getStatutBadge = (statut: StatutFonctionnalite) => {
-    const config = {
+    const config: Record<StatutFonctionnalite, { labelKey: string; className: string }> = {
       non_testee: { labelKey: 'campagne.detail.not_tested', className: 'bg-gray-100 text-gray-700' },
       en_cours: { labelKey: 'statut.en_cours', className: 'bg-yellow-100 text-yellow-700' },
       conforme: { labelKey: 'campagne.detail.compliant', className: 'bg-green-100 text-green-700' },
