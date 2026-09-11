@@ -5,7 +5,7 @@ import { useData } from '../contexts/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { FileText, Download, BarChart3, TrendingUp, CheckCircle2, AlertTriangle, Clock, Sparkles, Timer } from 'lucide-react';
+import { FileText, Download, BarChart3, TrendingUp, CheckCircle2, AlertTriangle, Clock, Timer } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -14,12 +14,8 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { envoyerMessageIA, suggerePriorite } from '../services/aiService';
+import { suggerePriorite } from '../services/aiService';
 import { Anomalie, Priorite, StatutAnomalie, StatutFonctionnalite } from '../types';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose
-} from '../components/ui/dialog';
-import { ScrollArea } from '../components/ui/scroll-area';
 
 const COLORS_STATUT = ['#EF4444', '#F59E0B', '#10B981', '#94A3B8'];
 const COLORS_PRIORITE = ['#DC2626', '#F97316', '#EAB308', '#94A3B8'];
@@ -571,29 +567,6 @@ export function ReportingPage() {
     ? Math.round(((stats.conformes + stats.anomaliesDetectees) / stats.totalFonctionnalites) * 100)
     : 0;
 
-  const [rapportDialogOpen, setRapportDialogOpen] = useState(false);
-  const [rapportContenu, setRapportContenu] = useState('');
-
-  const handleGenererRapportIA = async () => {
-    if (!campagne || !stats) {
-      toast.error(t('reporting.select_campaign_error'));
-      return;
-    }
-    try {
-      toast.loading(t('reporting.ai_report_generating'));
-      const { reply } = await envoyerMessageIA(
-        `Génère un rapport IA complet pour la campagne "${campagne.nom}"`,
-        campagneSelectionnee
-      );
-      toast.dismiss();
-      setRapportContenu(reply);
-      setRapportDialogOpen(true);
-    } catch {
-      toast.dismiss();
-      toast.error(t('reporting.ai_report_error'));
-    }
-  };
-
   const tauxConformite = stats && stats.totalFonctionnalites > 0
     ? Math.round((stats.conformes / stats.totalFonctionnalites) * 100)
     : 0;
@@ -878,36 +851,9 @@ export function ReportingPage() {
                     <Download className="w-4 h-4" />
                     {t('reporting.export_excel')}
                   </Button>
-                  <Button onClick={handleGenererRapportIA} variant="outline" className="gap-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50 text-purple-700">
-                    <Sparkles className="w-4 h-4" />
-                    {t('reporting.export_ai')}
-                  </Button>
               </div>
             </CardContent>
           </Card>
-
-          {/* Dialogue Rapport IA */}
-          <Dialog open={rapportDialogOpen} onOpenChange={setRapportDialogOpen}>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-purple-600" />
-                  {t('reporting.ai_report_title', { name: campagne?.nom })}
-                </DialogTitle>
-                <DialogDescription>
-                  {t('reporting.ai_report_desc')}
-                </DialogDescription>
-              </DialogHeader>
-              <ScrollArea className="h-96 rounded-lg border border-slate-100 bg-slate-50 p-4">
-                <pre className="text-sm font-mono text-slate-700 whitespace-pre-wrap">{rapportContenu}</pre>
-              </ScrollArea>
-              <div className="flex justify-end">
-                <DialogClose asChild>
-                  <Button variant="outline" className="border-slate-200">{t('reporting.close')}</Button>
-                </DialogClose>
-              </div>
-            </DialogContent>
-          </Dialog>
         </>
       )}
     </div>

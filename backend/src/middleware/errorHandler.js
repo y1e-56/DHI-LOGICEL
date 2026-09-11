@@ -11,6 +11,14 @@ export function errorHandler(err, _req, res, _next) {
     return;
   }
 
+  if (err?.name === 'ZodError') {
+    const detail = err?.issues?.[0];
+    const message = detail
+      ? `${detail.path?.join('.') || 'body'} : ${detail.message}`
+      : 'Données invalides';
+    return res.status(400).json({ message });
+  }
+
   if (err?.name === 'MulterError' && err.code === 'LIMIT_FILE_SIZE') {
     res.status(400).json({ message: 'Fichier trop volumineux. Taille maximale : 10 Mo' });
     return;

@@ -12,7 +12,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { ArrowLeft, Plus, TestTube, AlertTriangle, CheckCircle2, Clock, User, Play, Flag, X, Users, Trash2, Search, Loader2, Sparkles, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, TestTube, AlertTriangle, CheckCircle2, Clock, User, Play, Flag, X, Users, Trash2, Search, Loader2, FileText } from 'lucide-react';
 import { Fonctionnalite, Priorite, StatutFonctionnalite, StatutAnomalie, TestCase, HistoriqueAction, DescriptionAudio, TestExecution, Verdict } from '../types';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAsyncAction } from '../hooks/useAsyncAction';
@@ -290,25 +290,6 @@ export function CampagneDetailPage() {
       console.error(error);
     }
   };
-
-  const handleGenererTestCases = async () => {
-    if (!selectedFonctionnalite) return;
-    if (campagne?.statut === 'terminee' || campagne?.statut === 'archive') {
-      toast.error(t('campagne.detail.read_only_error'));
-      return;
-    }
-    try {
-      const result = await testCaseService.generate({ featureId: selectedFonctionnalite });
-      const cases = await testCaseService.list({ featureId: selectedFonctionnalite });
-      setTestCases(cases);
-      toast.success(t('campagne.detail.toast.testcase_generated', { count: result.count }));
-    } catch (error) {
-      toast.error(t('campagne.detail.toast.testcase_error'));
-      console.error(error);
-    }
-  };
-
-  const { pending: generationPending, run: genererTestCases } = useAsyncAction(handleGenererTestCases);
 
   const handleOpenAssignDialog = (fonctionnaliteId: string) => {
     const existante = fonctionnalites.find((f: any) => f.id === fonctionnaliteId);
@@ -758,9 +739,6 @@ export function CampagneDetailPage() {
             {selectedFonctionnalite && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" className="gap-2" disabled={readOnly || generationPending} onClick={genererTestCases} title={readOnly ? t('campagne.detail.read_only_error') : undefined}>
-                    <Sparkles className="w-4 h-4" />{t('campagne.detail.generate_testcases')}
-                  </Button>
                   <Dialog open={testCasesDialog} onOpenChange={setTestCasesDialog}>
                     <DialogTrigger asChild>
                       <Button className="gap-2" disabled={readOnly} title={readOnly ? t('campagne.detail.read_only_error') : undefined}>

@@ -45,6 +45,28 @@ export async function remove(id, client = null) {
   return result.rows[0] || null;
 }
 
+export async function update(id, data, client = null) {
+  const c = client || pool;
+  const fields = [];
+  const params = [];
+  let idx = 1;
+  if (data.name !== undefined) { fields.push(`name = $${idx++}`); params.push(data.name); }
+  if (data.description !== undefined) { fields.push(`description = $${idx++}`); params.push(data.description); }
+  if (data.expected_result !== undefined) { fields.push(`expected_result = $${idx++}`); params.push(data.expected_result); }
+  if (data.steps !== undefined) { fields.push(`steps = $${idx++}`); params.push(data.steps); }
+  if (data.priority !== undefined) { fields.push(`priority = $${idx++}`); params.push(data.priority); }
+  if (data.type !== undefined) { fields.push(`type = $${idx++}`); params.push(data.type); }
+  if (data.feature_id !== undefined) { fields.push(`feature_id = $${idx++}`); params.push(data.feature_id); }
+  if (fields.length === 0) return findById(id, c);
+  fields.push('updated_at = NOW()');
+  params.push(id);
+  const result = await c.query(
+    `UPDATE test_cases SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+    params
+  );
+  return result.rows[0] || null;
+}
+
 export async function getCampaignIdByFeature(featureId, client = null) {
   const c = client || pool;
   const result = await c.query('SELECT campaign_id FROM features WHERE id = $1', [featureId]);

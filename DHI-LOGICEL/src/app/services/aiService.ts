@@ -1,4 +1,3 @@
-import api from './api';
 import { Priorite, Anomalie, User } from '../types';
 
 const PRIORITE_KEYWORDS = {
@@ -170,15 +169,4 @@ export function suggereDeveloppeur(
   }
 
   return meilleurDeveloppeurId;
-}
-
-export async function envoyerMessageIA(
-  message: string,
-  campaignId?: string
-): Promise<{ reply: string; source: 'ollama' | 'fallback' | 'offline' }> {
-  const response = await api.post('/chat', {
-    message,
-    campaignId: campaignId ? Number(campaignId) : undefined,
-  });
-  return response.data;
 }

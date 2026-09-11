@@ -9,8 +9,15 @@ import tasksRouter from './tasks.js';
 import teamsRouter from './teams.js';
 import dashboardRouter from './dashboard.js';
 import testCasesRouter from './test-cases.js';
-import chatRouter from './chat.js';
-import anomalyCommentsRouter from './anomalyComments.js';
+import requirementsRouter from './requirements.js';
+import watchPointsRouter from './watchPoints.js';
+import testExecutionsRouter from './testExecutions.js';
+import testScenariosRouter from './testScenarios.js';
+import versionsRouter from './versions.js';
+import incidentsRouter from './incidents.js';
+import evidenceRouter from './evidence.js';
+import dependenciesRouter from './dependencies.js';
+import goLiveRouter from './goLive.js';
 
 const router = Router();
 
@@ -24,7 +31,14 @@ router.use('/tasks', tasksRouter);
 router.use('/teams', teamsRouter);
 router.use('/dashboard', dashboardRouter);
 router.use('/test-cases', testCasesRouter);
-router.use('/chat', chatRouter);
-router.use('/anomaly-comments', anomalyCommentsRouter);
+router.use('/requirements', requirementsRouter);
+router.use('/watch-points', watchPointsRouter);
+router.use('/test-executions', testExecutionsRouter);
+router.use('/test-scenarios', testScenariosRouter);
+router.use('/versions', versionsRouter);
+router.use('/incidents', incidentsRouter);
+router.use('/evidence', evidenceRouter);
+router.use('/dependencies', dependenciesRouter);
+router.use('/go-live', goLiveRouter);
 
 export default router;

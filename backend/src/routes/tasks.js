@@ -3,10 +3,13 @@ import { z } from 'zod';
 import * as featureService from '../services/featureService.js';
 import * as assignmentService from '../services/assignmentService.js';
 import * as anomalyService from '../services/anomalyService.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 import bus from '../lib/eventBus.js';
 
 const router = Router();
+
+const requireTaskManager = requireRole('admin', 'chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet');
+const requireTaskAssignee = requireRole('admin', 'chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet', 'tester', 'developer');
 
 const createFeatureSchema = z.object({
   campaign_id: z.number(),
@@ -51,7 +54,7 @@ const createAssignmentSchema = z.object({
  *                 feature: { $ref: '#/components/schemas/Feature' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  */
-router.post('/features', authenticate, async (req, res) => {
+router.post('/features', authenticate, requireTaskManager, async (req, res) => {
   const data = createFeatureSchema.parse(req.body);
   const result = await featureService.createFeature(data);
   bus.emit('data:changed', { entity: 'features' });
@@ -108,7 +111,7 @@ router.get('/campaigns/:campaignId/features', authenticate, async (req, res) => 
  *             schema: { $ref: '#/components/schemas/Assignment' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  */
-router.post('/assignments', authenticate, async (req, res) => {
+router.post('/assignments', authenticate, requireTaskManager, async (req, res) => {
   const data = createAssignmentSchema.parse(req.body);
   const assignment = await assignmentService.createAssignment(data.feature_id, data.assigned_to, req.user.id, data.duration_days);
   bus.emit('data:changed', { entity: 'features' });
@@ -144,7 +147,7 @@ router.post('/assignments', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.patch('/assignments/:id/reassign', authenticate, async (req, res) => {
+router.patch('/assignments/:id/reassign', authenticate, requireTaskManager, async (req, res) => {
   const { new_assigned_to, duration_days } = req.body;
   const data = { assigned_to: new_assigned_to };
   if (duration_days !== undefined) data.duration_days = duration_days;
@@ -182,7 +185,7 @@ router.patch('/assignments/:id/reassign', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.patch('/assignments/:id/status', authenticate, async (req, res) => {
+router.patch('/assignments/:id/status', authenticate, requireTaskAssignee, async (req, res) => {
   const { status } = req.body;
   const assignment = await assignmentService.updateAssignment(Number(req.params.id), { status }, req.user.id);
   bus.emit('data:changed', { entity: 'features' });
@@ -206,7 +209,7 @@ router.patch('/assignments/:id/status', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.delete('/assignments/:id', authenticate, async (req, res) => {
+router.delete('/assignments/:id', authenticate, requireTaskManager, async (req, res) => {
   await assignmentService.deleteAssignment(Number(req.params.id), req.user.id);
   bus.emit('data:changed', { entity: 'features' });
   res.status(204).send();

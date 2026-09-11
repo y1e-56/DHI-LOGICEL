@@ -110,8 +110,8 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Réservé aux administrateurs' });
+  if (!['admin', 'chef_projet', 'qa_lead'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Réservé aux administrateurs et chefs de projet' });
   }
   next();
 };

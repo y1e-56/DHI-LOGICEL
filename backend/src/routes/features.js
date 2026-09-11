@@ -3,12 +3,15 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import * as featureService from '../services/featureService.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 import { uploadFeatureAttachment } from '../config/upload.js';
 import { generateFeatureDocument } from '../services/featureDocumentService.js';
 import bus from '../lib/eventBus.js';
 
 const router = Router();
+
+const requireFeatureManager = requireRole('admin', 'chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet', 'product_owner');
+const requireFeatureTester = requireRole('admin', 'chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet', 'product_owner', 'tester');
 
 const createSchema = z.object({
   campaign_id: z.number(),
@@ -132,7 +135,7 @@ router.get('/:id', authenticate, async (req, res) => {
  *                 feature: { $ref: '#/components/schemas/Feature' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  */
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, requireFeatureManager, async (req, res) => {
   const data = createSchema.parse(req.body);
   const result = await featureService.createFeature(data);
   bus.emit('data:changed', { entity: 'features' });
@@ -168,7 +171,7 @@ router.post('/', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, requireFeatureManager, async (req, res) => {
   const feature = await featureService.updateFeature(Number(req.params.id), req.body);
   bus.emit('data:changed', { entity: 'features' });
   res.json({ feature });
@@ -206,7 +209,7 @@ router.put('/:id', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.patch('/:id/status', authenticate, async (req, res) => {
+router.patch('/:id/status', authenticate, requireFeatureTester, async (req, res) => {
   const { status } = req.body;
   const feature = await featureService.updateFeatureStatus(Number(req.params.id), status);
   bus.emit('data:changed', { entity: 'features' });
@@ -230,7 +233,7 @@ router.patch('/:id/status', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', authenticate, requireFeatureManager, async (req, res) => {
   await featureService.deleteFeature(Number(req.params.id));
   bus.emit('data:changed', { entity: 'features' });
   res.status(204).send();
@@ -269,7 +272,7 @@ router.delete('/:id', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.post('/:id/attachment', authenticate, uploadFeatureAttachment.single('file'), async (req, res) => {
+router.post('/:id/attachment', authenticate, requireFeatureManager, uploadFeatureAttachment.single('file'), async (req, res) => {
   const featureId = Number(req.params.id);
   if (!req.file) {
     return res.status(400).json({ message: 'Aucun fichier reçu' });
@@ -307,7 +310,7 @@ router.post('/:id/attachment', authenticate, uploadFeatureAttachment.single('fil
  *       404: { description: Fonctionnalité ou cas de test introuvable }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  */
-router.post('/:id/attachment/generate', authenticate, async (req, res) => {
+router.post('/:id/attachment/generate', authenticate, requireFeatureManager, async (req, res) => {
   const featureId = Number(req.params.id);
   const feature = await generateFeatureDocument(featureId);
   if (!feature) {
@@ -373,7 +376,7 @@ router.get('/:id/attachment', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.delete('/:id/attachment', authenticate, async (req, res) => {
+router.delete('/:id/attachment', authenticate, requireFeatureManager, async (req, res) => {
   const feature = await featureService.clearFeatureAttachment(Number(req.params.id));
   bus.emit('data:changed', { entity: 'features' });
   res.json({ feature });

@@ -6,7 +6,7 @@ import { useData } from '../contexts/DataContext';
 import { useNavigate, useLocation, Outlet } from 'react-router';
 import {
   Bell, LogOut, Menu, Home, FolderKanban, TestTube,
-  BarChart3, ChevronRight, Bug, Users, Sparkles, Languages, KeyRound, Eye, EyeOff, Search,
+  BarChart3, ChevronRight, Bug, Users, Languages, KeyRound, Eye, EyeOff, Search,
   ClipboardList, FileText, Settings, Shield, Clock, UserPlus, Package, Layers, AlertTriangle, Rocket
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
@@ -28,7 +28,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from './ui/dialog';
-import { AIChatBox } from './AIChatBox';
 import { ErrorBoundary } from './ErrorBoundary';
 import { authService } from '../services/authService';
 import { toast } from 'sonner';
@@ -40,7 +39,6 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [chatBoxOpen, setChatBoxOpen] = useState(false);
   const [changePwdOpen, setChangePwdOpen] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: '', next: '', confirm: '' });
   const [pwdVisible, setPwdVisible] = useState({ current: false, next: false, confirm: false });
@@ -154,9 +152,6 @@ export function Layout() {
         { path: '/dette-qualite', label: 'Dette qualité', icon: AlertTriangle, roles: ['admin', 'chef_testeur'] },
         { path: '/go-nogo', label: 'Go / No-Go', icon: Rocket, roles: ['admin', 'chef_testeur', 'directeur'] },
         { path: '/rapports', label: 'Rapports', icon: FileText, roles: ['admin', 'chef_testeur', 'directeur'] },
-        { path: '/alertes', label: 'Alertes', icon: Bell, roles: ['admin', 'chef_testeur', 'testeur'] },
-        { path: '/audit-trail', label: 'Audit trail', icon: Clock, roles: ['admin', 'chef_testeur'] },
-        { path: '/notifications-config', label: 'Notifications', icon: Bell, roles: ['admin', 'chef_testeur', 'testeur', 'developpeur'] },
       ],
     },
   ];
@@ -265,16 +260,11 @@ export function Layout() {
           <span className="flex-1 truncate">{i18n.language === 'fr' ? 'English' : 'Français'}</span>
         </button>
         <button
-          onClick={() => setChatBoxOpen(true)}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 text-left group ${
-            chatBoxOpen
-              ? 'bg-gradient-to-r from-purple-500/25 to-purple-500/10 text-white font-semibold shadow-lg shadow-purple-500/10 border border-purple-500/20'
-              : 'text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-          }`}
+          onClick={() => { navigate('/parametres'); setSidebarOpen(false); }}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 text-left text-white/60 hover:bg-white/[0.06] hover:text-white/90 group"
         >
-          <Sparkles className={`w-4 h-4 flex-shrink-0 transition-colors ${chatBoxOpen ? 'text-purple-300' : 'group-hover:text-white/80'}`} />
-          <span className="flex-1 truncate">{t('layout.ai_assistant')}</span>
-          {chatBoxOpen && <ChevronRight className="w-3.5 h-3.5 text-purple-300 flex-shrink-0" />}
+          <Settings className="w-4 h-4 flex-shrink-0 group-hover:text-white/80" />
+          <span className="flex-1 truncate">{t('nav.settings')}</span>
         </button>
         {notificationsNonLues.length > 0 && (
           <div className="flex items-center gap-2.5 px-3 py-2.5 bg-gradient-to-r from-indigo-500/15 to-indigo-500/5 rounded-xl border border-indigo-500/20">
@@ -383,6 +373,14 @@ export function Layout() {
               </DropdownMenu>
             )}
 
+            <button
+              onClick={() => navigate('/parametres')}
+              className="p-2.5 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all"
+              title={t('nav.settings')}
+            >
+              <Settings style={{ width: '1.125rem', height: '1.125rem' }} />
+            </button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="relative p-2.5 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all">
@@ -461,7 +459,7 @@ export function Layout() {
         </header>
 
         <main className="flex-1 overflow-y-auto">
-          <div className="max-w-7xl mx-auto px-4 lg:px-6 py-8">
+          <div className="w-full px-4 lg:px-6 py-6">
             <ErrorBoundary key={location.pathname}>
               <Outlet />
             </ErrorBoundary>
@@ -546,7 +544,6 @@ export function Layout() {
         </DialogContent>
       </Dialog>
 
-      <AIChatBox open={chatBoxOpen} onClose={() => setChatBoxOpen(false)} />
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );

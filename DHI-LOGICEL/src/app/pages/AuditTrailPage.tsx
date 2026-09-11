@@ -1,12 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { ArrowLeft, History, Search, Filter, Trash2 } from 'lucide-react';
+import { History, Search, Filter, Trash2 } from 'lucide-react';
 import { auditService } from '../services/auditService';
 import { AuditEntry } from '../types';
 
@@ -25,7 +24,6 @@ const typeConfig: Record<string, { label: string; cls: string }> = {
 
 export function AuditTrailPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [entries, setEntries] = useState<AuditEntry[]>(auditService.lister());
   const [recherche, setRecherche] = useState('');
   const [filtreType, setFiltreType] = useState('');
@@ -44,10 +42,6 @@ export function AuditTrailPage() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" className="-ml-2" onClick={() => navigate(-1)}>
-        <ArrowLeft className="w-4 h-4 mr-2" />Retour
-      </Button>
-
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-gray-50">
           <History className="w-6 h-6 text-gray-600" />

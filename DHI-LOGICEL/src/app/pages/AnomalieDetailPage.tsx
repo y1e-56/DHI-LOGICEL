@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,18 +8,14 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { ArrowLeft, Bug, User, Calendar, CheckCircle2, Timer, AlertTriangle, ChevronDown, ListChecks, Send, Trash2 } from 'lucide-react';
-import { StatutAnomalie, HistoriqueAction, TestCase, AnomalieCommentaire } from '../types';
+import { ArrowLeft, Bug, User, Calendar, CheckCircle2, Timer, AlertTriangle, ChevronDown, ListChecks } from 'lucide-react';
+import { StatutAnomalie, HistoriqueAction, TestCase } from '../types';
 import { useAsyncAction } from '../hooks/useAsyncAction';
-import { api, getErrorMessage } from '../services/api';
+import { api } from '../services/api';
 import { testCaseService } from '../services/testCaseService';
 import { mapHistoriqueFromBackend } from '../utils/mappers';
 import { HistoriqueTimeline } from '../components/HistoriqueTimeline';
-import { VoiceMessageRecorder } from '../components/VoiceMessageRecorder';
 import { VoiceDescriptionDisplay } from '../components/VoiceDescriptionDisplay';
-import { commentaireService } from '../services/commentaireService';
-import { toast } from 'sonner';
 
 const prioriteConfig: Record<string, { labelKey: string; cls: string; dot: string }> = {
   critique: { labelKey: 'priorite.critique', cls: 'bg-red-100 text-red-700 border border-red-200', dot: 'bg-red-500' },
@@ -53,22 +49,10 @@ export function AnomalieDetailPage() {
   const [historique, setHistorique] = useState<HistoriqueAction[]>([]);
   const [descriptionOuverte, setDescriptionOuverte] = useState(true);
   const [historiqueOuvert, setHistoriqueOuvert] = useState(true);
-  const [commentaires, setCommentaires] = useState<AnomalieCommentaire[]>([]);
-  const [nouveauCommentaire, setNouveauCommentaire] = useState('');
-  const [audioCommentaire, setAudioCommentaire] = useState<{ audioData: string; audioType: string; durationSeconds: number } | null>(null);
-  const [activeTab, setActiveTab] = useState<'details' | 'commentaires'>('details');
-  const commentaireRef = useRef<HTMLDivElement>(null);
 
   const anomalie = anomalies.find(a => a.id === anomalieId);
   const [testCase, setTestCase] = useState<TestCase | null>(null);
   const [testCaseChargement, setTestCaseChargement] = useState(false);
-
-  useEffect(() => {
-    if (!anomalieId) return;
-    commentaireService.listByAnomalie(anomalieId)
-      .then(setCommentaires)
-      .catch(err => console.error('[AnomalieDetailPage] Échec du chargement des commentaires:', err));
-  }, [anomalieId]);
 
   useEffect(() => {
     if (!anomalie?.testCaseId) {
@@ -148,40 +132,6 @@ export function AnomalieDetailPage() {
   };
 
   const { pending: cloturePending, run: validerClotureAction } = useAsyncAction(handleValiderCloture);
-
-  const handleEnvoyerCommentaire = async () => {
-    if (!currentUser || !anomalie) return;
-    const message = nouveauCommentaire.trim();
-    if (!message && !audioCommentaire) return;
-    try {
-      const commentaire = await commentaireService.create(anomalie.id, {
-        message: message || undefined,
-        audioData: audioCommentaire?.audioData,
-        audioType: audioCommentaire?.audioType,
-        durationSeconds: audioCommentaire?.durationSeconds,
-      });
-      setCommentaires(prev => [...prev, commentaire]);
-      setNouveauCommentaire('');
-      setAudioCommentaire(null);
-      requestAnimationFrame(() => commentaireRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
-    } catch (error) {
-      toast.error(getErrorMessage(error));
-    }
-  };
-
-  const { pending: commentairePending, run: envoyerCommentaire } = useAsyncAction(handleEnvoyerCommentaire);
-
-  const handleSupprimerCommentaire = async (id: string) => {
-    await commentaireService.delete(id);
-    setCommentaires(prev => prev.filter(c => c.id !== id));
-  };
-
-  const { pending: suppressionPending, run: supprimerCommentaire } = useAsyncAction(handleSupprimerCommentaire);
-
-  const formatDateHeure = (iso: string) => {
-    const d = new Date(iso);
-    return `${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
-  };
 
   return (
     <div className="space-y-5">
@@ -272,112 +222,8 @@ export function AnomalieDetailPage() {
             </CardContent>
           </Card>
 
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'details' | 'commentaires')} className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="details">{t('anomalie.detail.details_tab')}</TabsTrigger>
-              <TabsTrigger value="commentaires">
-                {t('anomalie.detail.comments_title', { count: commentaires.length })}
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="commentaires" className="space-y-4">
-              <Card className="border-0 shadow-sm">
-                <CardContent className="pt-5 pb-5 px-5 space-y-4">
-                {commentaires.length > 0 && (
-                  <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                    {commentaires.map(c => {
-                      const estAuteur = currentUser.id === c.userId;
-                      return (
-                        <div key={c.id} className={`p-3 rounded-xl border ${estAuteur ? 'bg-indigo-50/50 border-indigo-100 ml-6' : 'bg-slate-50 border-slate-100 mr-6'}`}>
-                          <div className="flex items-center justify-between gap-2 mb-1.5">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                                <span className="text-[9px] font-bold text-indigo-700">
-                                  {c.userName.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
-                                </span>
-                              </div>
-                              <p className="text-xs font-semibold text-slate-700 truncate">{c.userName}</p>
-                              <p className="text-[10px] text-slate-400 font-mono whitespace-nowrap">{formatDateHeure(c.dateCreation)}</p>
-                            </div>
-                            {estAuteur && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 w-6 p-0 text-slate-400 hover:text-red-500"
-                                onClick={() => supprimerCommentaire(c.id)}
-                                disabled={suppressionPending}
-                                title={t('anomalie.detail.delete_comment')}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                          {c.message && (
-                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{c.message}</p>
-                          )}
-                          {c.audioData && (
-                            <div className="flex flex-col gap-1.5 mt-1">
-                              <audio controls src={c.audioData} className="h-9 max-w-full" />
-                              {(c.durationSeconds ?? 0) > 0 && (
-                                <p className="text-[10px] text-slate-400 font-mono">
-                                  {Math.floor((c.durationSeconds ?? 0) / 60)}:{String((c.durationSeconds ?? 0) % 60).padStart(2, '0')}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <div ref={commentaireRef} className="space-y-2">
-                  <Textarea
-                    value={nouveauCommentaire}
-                    onChange={e => setNouveauCommentaire(e.target.value)}
-                    placeholder={t('anomalie.detail.comment_placeholder')}
-                    rows={2}
-                    className="bg-white border-slate-200 text-sm resize-none"
-                  />
-                  {audioCommentaire && (
-                    <div className="flex flex-wrap items-center gap-2 bg-indigo-50/60 border border-indigo-100 rounded-lg px-3 py-2">
-                      <audio controls src={audioCommentaire.audioData} className="h-9 max-w-[240px]" />
-                      {audioCommentaire.durationSeconds > 0 && (
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {Math.floor(audioCommentaire.durationSeconds / 60)}:{String(audioCommentaire.durationSeconds % 60).padStart(2, '0')}
-                        </span>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="ml-auto h-7 w-7 p-0 text-slate-400 hover:text-red-500"
-                        onClick={() => setAudioCommentaire(null)}
-                        title={t('anomalie.detail.delete_comment')}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between gap-2">
-                    <VoiceMessageRecorder
-                      onRecorded={r => setAudioCommentaire(r)}
-                      disabled={commentairePending}
-                    />
-                    <Button
-                      onClick={envoyerCommentaire}
-                      disabled={(!nouveauCommentaire.trim() && !audioCommentaire) || commentairePending}
-                      className="gap-2"
-                    >
-                      <Send className="w-4 h-4" />
-                      {t('anomalie.detail.send_comment')}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="details" className="space-y-5">
-            {anomalie.testCaseId && (
+          <div className="space-y-4">
+          {anomalie.testCaseId && (
             <Card className="border-0 shadow-sm border-l-4 border-l-sky-500">
               <CardHeader className="pb-3 pt-5 px-5">
                 <CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -494,8 +340,7 @@ export function AnomalieDetailPage() {
               </CardContent>
             </Card>
           )}
-            </TabsContent>
-          </Tabs>
+          </div>
         </div>
 
         <div className="space-y-5">

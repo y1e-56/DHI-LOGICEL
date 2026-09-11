@@ -2,10 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as anomalyService from '../services/anomalyService.js';
 import * as notificationService from '../services/notificationService.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 import bus from '../lib/eventBus.js';
 
 const router = Router();
+
+const requireAnomalyReporter = requireRole('admin', 'chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet', 'tester');
+const requireAnomalyManager = requireRole('admin', 'chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet');
+const requireAnomalyAssignee = requireRole('admin', 'chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet', 'tester', 'developer');
 
 const createSchema = z.object({
   feature_id: z.number(),
@@ -253,7 +257,7 @@ router.get('/:id', authenticate, async (req, res) => {
  *                 anomaly: { $ref: '#/components/schemas/Anomaly' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  */
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, requireAnomalyReporter, async (req, res) => {
   const data = createSchema.parse(req.body);
   const anomaly = await anomalyService.createAnomaly(data);
   bus.emit('data:changed', { entity: 'anomalies' });
@@ -289,7 +293,7 @@ router.post('/', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, requireAnomalyAssignee, async (req, res) => {
   const anomaly = await anomalyService.updateAnomaly(Number(req.params.id), req.body, req.user.id);
   bus.emit('data:changed', { entity: 'anomalies' });
   res.json({ anomaly });
@@ -327,7 +331,7 @@ router.put('/:id', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.patch('/:id/signal-resolution', authenticate, async (req, res) => {
+router.patch('/:id/signal-resolution', authenticate, requireAnomalyAssignee, async (req, res) => {
   const { resolution_description } = req.body;
   const anomaly = await anomalyService.signalResolution(Number(req.params.id), resolution_description, req.user.id);
   bus.emit('data:changed', { entity: 'anomalies' });
@@ -357,7 +361,7 @@ router.patch('/:id/signal-resolution', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.patch('/:id/validate', authenticate, async (req, res) => {
+router.patch('/:id/validate', authenticate, requireAnomalyManager, async (req, res) => {
   const anomaly = await anomalyService.validateAnomaly(Number(req.params.id), req.user.id);
   bus.emit('data:changed', { entity: 'anomalies' });
   res.json({ anomaly });
@@ -386,7 +390,7 @@ router.patch('/:id/validate', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.patch('/:id/reject', authenticate, async (req, res) => {
+router.patch('/:id/reject', authenticate, requireAnomalyManager, async (req, res) => {
   const anomaly = await anomalyService.rejectAnomaly(Number(req.params.id), req.user.id);
   bus.emit('data:changed', { entity: 'anomalies' });
   res.json({ anomaly });
@@ -409,7 +413,7 @@ router.patch('/:id/reject', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', authenticate, requireAnomalyManager, async (req, res) => {
   await anomalyService.deleteAnomaly(Number(req.params.id), req.user.id);
   bus.emit('data:changed', { entity: 'anomalies' });
   res.status(204).send();

@@ -3,9 +3,11 @@ import { z } from 'zod';
 import * as teamService from '../services/teamService.js';
 import * as campaignMemberService from '../services/campaignMemberService.js';
 import * as campaignService from '../services/campaignService.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+const requireTeamManager = requireRole('admin', 'chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet');
 
 const addMemberSchema = z.object({
   campaign_id: z.number(),
@@ -83,7 +85,7 @@ router.get('/stats/:projectId', authenticate, async (req, res) => {
  *         description: Membre ajouté
  *       401: { $ref: '#/components/responses/Unauthorized' }
  */
-router.post('/members', authenticate, async (req, res) => {
+router.post('/members', authenticate, requireTeamManager, async (req, res) => {
   const data = addMemberSchema.parse(req.body);
   await campaignMemberService.addMember(data.campaign_id, data.user_id, data.team_type);
   res.status(201).json({ message: 'Membre ajouté' });
@@ -110,7 +112,7 @@ router.post('/members', authenticate, async (req, res) => {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.delete('/members/:campaignId/:userId', authenticate, async (req, res) => {
+router.delete('/members/:campaignId/:userId', authenticate, requireTeamManager, async (req, res) => {
   await campaignMemberService.removeMember(Number(req.params.campaignId), Number(req.params.userId));
   res.json({ message: 'Membre retiré' });
 });

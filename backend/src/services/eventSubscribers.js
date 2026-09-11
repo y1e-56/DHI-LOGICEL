@@ -489,6 +489,24 @@ export function setupEventSubscribers(io) {
     }
   });
 
+  bus.on('go-live:decision_created', async ({ decision, user_id }) => {
+    try {
+      await db.history.addAction({
+        entity_type: 'go_live_decision',
+        entity_id: decision.id,
+        user_id: user_id || null,
+        action_type: 'created',
+        description: `Décision Go Live ${decision.verdict} (${decision.decider}) — checklist ${decision.checklist_completion} % [release ${decision.release_ref}]`,
+      });
+    } catch (e) {
+      console.error('[events] Erreur history go-live:decision_created', e);
+    }
+    if (io) emitDataChanged(io, 'go-live');
+  });
+  bus.on('go-live:checklist_updated', async () => {
+    if (io) emitDataChanged(io, 'go-live');
+  });
+
   bus.on('feature:created', async () => { if (io) emitDataChanged(io, 'features'); });
   bus.on('feature:updated', async () => { if (io) emitDataChanged(io, 'features'); });
   bus.on('feature:deleted', async () => { if (io) emitDataChanged(io, 'features'); });

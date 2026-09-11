@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
-import { ArrowLeft, Settings, Save, Bell } from 'lucide-react';
+import { Settings, Save, Bell } from 'lucide-react';
 import { ConfigNotifications } from '../types';
 
 const CONFIG_KEY = 'dhi_config_notifications';
@@ -21,7 +20,6 @@ function configDefaut(): ConfigNotifications {
 
 export function NotificationsConfigPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [config, setConfig] = useState<ConfigNotifications>(loadConfig);
   const [sauvegarde, setSauvegarde] = useState(false);
 
@@ -37,10 +35,6 @@ export function NotificationsConfigPage() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" className="-ml-2" onClick={() => navigate(-1)}>
-        <ArrowLeft className="w-4 h-4 mr-2" />Retour
-      </Button>
-
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-violet-50">
           <Settings className="w-6 h-6 text-violet-600" />

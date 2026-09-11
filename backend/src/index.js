@@ -58,6 +58,28 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '100mb' }));
 
+const requestLogger = (req, res, next) => {
+  const startedAt = process.hrtime.bigint();
+  const path = req.path;
+  if (path.startsWith('/api-docs') || path.startsWith('/socket.io')) return next();
+  const onFinish = () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    const code = res.statusCode;
+    const user = req.user?.id ? ` user=${req.user.id}` : '';
+    const level = code >= 500 ? 'ERROR' : durationMs >= 1000 ? 'SLOW' : code >= 400 ? 'WARN' : 'INFO';
+    const marker = level === 'ERROR' ? '✗' : level === 'SLOW' ? '≈' : level === 'WARN' ? '!' : '·';
+    const size = res.getHeader('content-length');
+    const sizePart = size ? ` ${size}B` : '';
+    console.log(
+      `[api] ${new Date().toISOString()} ${marker} ${level} ${req.method} ${req.originalUrl} → ${code} ${durationMs.toFixed(1)}ms${sizePart}${user}`
+    );
+  };
+  res.on('finish', onFinish);
+  next();
+};
+
+app.use(requestLogger);
+
 app.use('/api-docs', helmet({ contentSecurityPolicy: false }), swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customSiteTitle: 'DHI Test Tracking API Docs',
 }));
@@ -184,7 +206,7 @@ async function start() {
   try {
     await initDb();
     await autoSeedIfEmpty();
-    httpServer.listen(PORT, '0.0.0.0', () => {
+    httpServer.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Socket.IO listening on port ${PORT}`);
     });

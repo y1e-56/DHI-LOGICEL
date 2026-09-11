@@ -89,6 +89,15 @@ export async function listPaginated(filters = {}, client = null) {
   });
 }
 
+export async function updateRole(id, role, client = null) {
+  const c = client || pool;
+  const result = await c.query(
+    'UPDATE users SET role = $1 WHERE id = $2 AND date_suppression IS NULL RETURNING id, email, first_name, last_name, role',
+    [role, id]
+  );
+  return result.rows[0] || null;
+}
+
 export async function listByRole(role, client = null) {
   const c = client || pool;
   const result = await c.query(

@@ -2,7 +2,6 @@ import { withTransaction } from '../config/database.js';
 import { AppError } from '../middleware/errorHandler.js';
 import bus from '../lib/eventBus.js';
 import * as db from '../db/index.js';
-import * as testCaseService from './testCaseService.js';
 import { deleteAttachmentFile } from '../config/upload.js';
 import { generateFeatureDocument } from './featureDocumentService.js';
 
@@ -35,9 +34,8 @@ export async function createFeature(data) {
 
   const result = await withTransaction(async (client) => {
     const feature = await db.features.create(data, client);
-    const generatedTestCases = await testCaseService.generateForFeature(feature, client);
-    bus.emit('feature:created', { feature, generatedTestCases });
-    return { feature, generatedTestCases };
+    bus.emit('feature:created', { feature });
+    return { feature };
   });
 
   // Génère automatiquement le document PDF des cas de test au moment de l'assignation

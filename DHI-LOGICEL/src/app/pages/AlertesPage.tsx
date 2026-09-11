@@ -1,13 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
-import { ArrowLeft, Bell, BellRing, Plus, Trash2, Eye, EyeOff, AlertTriangle, Info, Shield } from 'lucide-react';
+import { Bell, BellRing, Plus, Trash2, Eye, EyeOff, AlertTriangle, Info, Shield } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import { alerteService } from '../services/alerteService';
 import { RegleAlerte, AlerteDeclenchee } from '../types';
@@ -30,7 +29,6 @@ const prioriteConfig: Record<string, { cls: string }> = {
 
 export function AlertesPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { anomalies, campagnes, projets } = useData();
 
   const [regles, setRegles] = useState<RegleAlerte[]>([]);
@@ -77,10 +75,6 @@ export function AlertesPage() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" className="-ml-2" onClick={() => navigate(-1)}>
-        <ArrowLeft className="w-4 h-4 mr-2" />Retour
-      </Button>
-
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-amber-50">

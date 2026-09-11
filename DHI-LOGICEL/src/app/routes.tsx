@@ -23,6 +23,7 @@ import { TesteurTachesPage } from './pages/TesteurTachesPage';
 import { DeveloppeurAnomaliesPage } from './pages/DeveloppeurAnomaliesPage';
 import { AnomalieDetailPage } from './pages/AnomalieDetailPage';
 import { ReportingPage } from './pages/ReportingPage';
+import { ParametresPage } from './pages/ParametresPage';
 import { Layout } from './components/Layout';
 
 function ProtectedLayout() {
@@ -66,6 +67,7 @@ export const router = createBrowserRouter([
       { path: '/developpeur/anomalies', element: <DeveloppeurAnomaliesPage /> },
       { path: '/anomalies/:anomalieId', element: <AnomalieDetailPage /> },
       { path: '/reporting', element: <ReportingPage /> },
+      { path: '/parametres', element: <ParametresPage /> },
     ]
   },
   {

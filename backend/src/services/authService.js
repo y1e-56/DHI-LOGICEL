@@ -82,6 +82,16 @@ export async function updateProfile(userId, data) {
   return toPublic(user);
 }
 
+export async function updateUserRole(userId, role) {
+  const allowedRoles = ['admin', 'chef_testeur', 'tester', 'developer', 'quality_manager', 'qa_lead', 'product_owner', 'chef_projet', 'approver', 'lecteur'];
+  if (!allowedRoles.includes(role)) {
+    throw new AppError('Rôle invalide. Rôles autorisés : ' + allowedRoles.join(', '), 400);
+  }
+  const user = await db.users.updateRole(userId, role);
+  if (!user) throw new AppError('Utilisateur non trouvé', 404);
+  return { id: user.id, email: user.email, first_name: user.first_name, last_name: user.last_name, role: user.role };
+}
+
 export async function listUsers() {
   return db.users.list();
 }
