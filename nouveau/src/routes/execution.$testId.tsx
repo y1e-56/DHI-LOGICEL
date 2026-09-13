@@ -556,6 +556,7 @@ function ExecutionPage() {
   const createDefect = (assignee: string) => {
     const id = addDefect({
       productId: campaign?.productId ?? "p-paiement",
+      campaignId: campaign?.id ?? "c-recette-412",
       title: t("pages.execution_detail.defect_title_prefix")
         .replace("{id}", test.id)
         .replace("{name}", test.name),

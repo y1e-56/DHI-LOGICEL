@@ -51,9 +51,12 @@ function DefectDetailPage() {
   const defect = defects.find((d) => d.id === defectId);
   if (!defect) return null;
   const linkedTest = defect.testId ? tests.find((test) => test.id === defect.testId) : undefined;
-  const linkedCampaign = linkedTest
-    ? campaigns.find((campaign) => campaign.id === linkedTest.campaignId)
+  const linkedCampaign = defect.campaignId
+    ? campaigns.find((campaign) => campaign.id === defect.campaignId)
     : undefined;
+  const fallbackCampaign = linkedCampaign ?? (linkedTest
+    ? campaigns.find((campaign) => campaign.id === linkedTest.campaignId)
+    : undefined);
   const universe = users.filter((u) => u.active).map((u) => u.name);
   const devs = users.filter((u) => u.active && u.role === "developpeur").map((u) => u.name);
 
@@ -84,9 +87,7 @@ function DefectDetailPage() {
       } else {
         const backendStatus = {
           nouvelle: "new",
-          affectee: "in_progress",
           encorrection: "in_progress",
-          avalider: undefined,
           a_retester: "resolution_signaled",
           fermee: "validated",
           reouverte: "rejected",
@@ -137,15 +138,15 @@ function DefectDetailPage() {
           {defect.version}
           {defect.testId ? ` · ${t("pages.anomalies.detail_test")} ${defect.testId}` : ""}
         </p>
-        {linkedCampaign ? (
+        {fallbackCampaign ? (
           <p className="mt-2 text-sm text-muted-foreground">
             {t("common.campagne")} :{" "}
             <Link
               to="/campagnes/$campaignId"
-              params={{ campaignId: linkedCampaign.id }}
+              params={{ campaignId: fallbackCampaign.id }}
               className="font-medium text-primary hover:underline"
             >
-              {linkedCampaign.name}
+              {fallbackCampaign.name}
             </Link>
           </p>
         ) : null}

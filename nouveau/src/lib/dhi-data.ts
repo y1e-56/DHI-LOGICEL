@@ -19,7 +19,7 @@ export type Criticality = "critique" | "haute" | "moyenne" | "basse";
 export type Severity = "haute" | "moyenne" | "basse";
 export type CampaignStatus = "planifiee" | "encours" | "terminee" | "avenir";
 export type DefectStatus =
-  | "nouvelle" | "affectee" | "encorrection" | "avalider" | "a_retester" | "fermee" | "reouverte";
+  | "nouvelle" | "encorrection" | "a_retester" | "fermee" | "reouverte";
 export type TestCategory = "fonctionnels" | "non_fonctionnels" | "speciaux";
 export type Verdict =
   "PASS" | "PASS_WITH_RESERVATION" | "FAIL" | "BLOCKED" | "NOT_RUN" | "NOT_APPLICABLE";
@@ -151,6 +151,7 @@ export interface TestCase {
   tester?: string | undefined;
   executedAt?: string | undefined;
   duration?: string | undefined;
+  executionId?: string | undefined;
   evidence: { id: string; name: string; size: string; kind: "image" | "log" | "video" }[];
 }
 
@@ -159,6 +160,7 @@ export interface TestCase {
 export interface Defect {
   id: string;
   productId: string;
+  campaignId: string;
   title: string;
   description: string;
   severity: Severity;
@@ -487,9 +489,7 @@ export const TEST_TYPES: { id: TestType; label: string; category: TestCategory }
 
 export const DEFECT_STATUS_LABEL: Record<DefectStatus, string> = {
   nouvelle: "Nouvelle",
-  affectee: "Affectée",
   encorrection: "En correction",
-  avalider: "À valider",
   a_retester: "À re-tester",
   fermee: "Fermée",
   reouverte: "Rouverte",
@@ -556,16 +556,16 @@ export const ROLE_LABEL: Record<AppRole, string> = {
 
 /* Pages accessibles par rôle */
 export const ROLE_PAGES: Record<AppRole, string[]> = {
-  admin: ["/dashboard-admin", "/alertes", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/referentiels", "/administration", "/administration/ajouter-utilisateur", "/audit"],
-  qa_lead: ["/", "/alertes", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/referentiels", "/audit"],
-  quality_manager: ["/", "/alertes", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/referentiels", "/audit"],
-  product_owner: ["/", "/produits", "/projets", "/fonctionnalites", "/exigences", "/go-live", "/points-a-surveiller", "/audit"],
-  chef_projet: ["/dashboard-chef", "/produits", "/projets", "/fonctionnalites", "/exigences", "/campagnes", "/campagnes/ajouter", "/go-live", "/audit"],
-  chef_testeur: ["/dashboard-testeur", "/campagnes", "/campagnes/ajouter", "/anomalies", "/points-a-surveiller", "/audit"],
-  testeur: ["/dashboard-testeur", "/campagnes", "/anomalies", "/audit"],
-  developpeur: ["/dashboard-developpeur", "/anomalies", "/campagnes", "/audit"],
-  approver: ["/", "/go-live", "/points-a-surveiller", "/audit"],
-  lecteur: ["/", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/go-live", "/points-a-surveiller", "/audit"],
+  admin: ["/", "/dashboard-admin", "/alertes", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/referentiels", "/execution", "/administration", "/administration/ajouter-utilisateur", "/audit"],
+  qa_lead: ["/", "/alertes", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/referentiels", "/execution", "/audit"],
+  quality_manager: ["/", "/alertes", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/referentiels", "/execution", "/audit"],
+  product_owner: ["/", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/audit"],
+  chef_projet: ["/", "/dashboard-chef", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/execution", "/audit"],
+  chef_testeur: ["/", "/dashboard-testeur", "/notifications", "/produits", "/projets", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/execution", "/audit"],
+  testeur: ["/", "/dashboard-testeur", "/notifications", "/campagnes", "/anomalies", "/execution", "/audit"],
+  developpeur: ["/", "/dashboard-developpeur", "/notifications", "/anomalies", "/campagnes", "/audit"],
+  approver: ["/", "/notifications", "/go-live", "/points-a-surveiller", "/audit"],
+  lecteur: ["/", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/go-live", "/points-a-surveiller"],
 };
 
 /*  --------------------------------------------------------------------------  */
@@ -597,13 +597,11 @@ export const SCORE_LABELS: Record<keyof ScoreBreakdown, string> = {
 /*  5.2  Workflow cycle de vie d'une anomalie -----------------------------  */
 
 export const DEFECT_TRANSITIONS: Record<DefectStatus, DefectStatus[]> = {
-  nouvelle: ["affectee"],
-  affectee: ["encorrection", "nouvelle"],
-  encorrection: ["avalider", "a_retester"],
-  avalider: ["fermee", "reouverte"],
+  nouvelle: ["encorrection"],
+  encorrection: ["a_retester", "reouverte"],
   a_retester: ["fermee", "reouverte"],
   fermee: ["reouverte"],
-  reouverte: ["affectee", "encorrection"],
+  reouverte: ["encorrection"],
 };
 
 /*  5.3  Checklist Go Live (poids sur 100) --------------------------------  */
@@ -1050,6 +1048,7 @@ export const defects: Defect[] = [
   {
     id: "ANO-2847",
     productId: "p-paiement",
+    campaignId: "c-recette-412",
     title: "Temps de réponse paiement > seuil (942 ms)",
     description:
       "Lors du paiement par carte, le temps de réponse dépasse 800 ms (942 ms observés) sur l'environnement de recette.",
@@ -1067,6 +1066,7 @@ export const defects: Defect[] = [
   {
     id: "ANO-2848",
     productId: "p-paiement",
+    campaignId: "c-recette-412",
     title: "Export PDF : crash en format paysage",
     description: "L'export d'un relevé en orientation paysage provoque une erreur 500.",
     severity: "haute",
@@ -1083,11 +1083,12 @@ export const defects: Defect[] = [
   {
     id: "ANO-2849",
     productId: "p-paiement",
+    campaignId: "c-regression-411",
     title: "Webhook silencieux après timeout marchand",
     description: "Aucun rejeu du webhook lorsque le marchand ne répond pas dans les 5 s.",
     severity: "moyenne",
     priority: "moyenne",
-    status: "affectee",
+    status: "encorrection",
     featureId: "f-webhook",
     version: "4.11",
     reporter: "Sophie Lemaire",
@@ -1098,6 +1099,7 @@ export const defects: Defect[] = [
   {
     id: "ANO-2850",
     productId: "p-paiement",
+    campaignId: "c-regression-411",
     title: "Notification envoyée en double",
     description: "Deux SMS de confirmation envoyés pour une même transaction.",
     severity: "basse",
@@ -1113,6 +1115,7 @@ export const defects: Defect[] = [
   {
     id: "ANO-2851",
     productId: "p-paiement",
+    campaignId: "c-recette-412",
     title: "Mauvais calcul de TVA sur remise",
     description: "La TVA est calculée avant application de la remise commerciale.",
     severity: "haute",
@@ -1492,7 +1495,7 @@ export const auditTrail: AuditEntry[] = [
     actor: "Pierre Durand",
     action: "Statut anomalie",
     entity: "ANO-2848",
-    detail: "affectee → encorrection",
+    detail: "nouvelle → encorrection",
     at: "2024-08-21 10:05",
   },
   {

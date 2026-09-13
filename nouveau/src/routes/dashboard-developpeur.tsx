@@ -39,10 +39,10 @@ function DeveloperDashboard() {
 
   const openDefects = myDefects.filter((d) => d.status !== "fermee").length;
   const inCorrection = myDefects.filter((d) => d.status === "encorrection").length;
-  const toValidate = myDefects.filter((d) => d.status === "avalider").length;
+  const toValidate = myDefects.filter((d) => d.status === "a_retester").length;
 
   const nextStatus = (d: { id: string; status: DefectStatus }): DefectStatus => {
-    if (d.status === "affectee" || d.status === "encorrection" || d.status === "avalider") {
+    if (d.status === "encorrection") {
       return "a_retester";
     }
     return d.status;

@@ -3,10 +3,12 @@ const API_BASE_URL = import.meta.env["VITE_API_URL"] ?? "http://localhost:5000/a
 import type {
   AppRole,
   Criticality,
+  Defect,
   DefectStatus,
   GoLiveChecklistItem,
   GoLiveDecision,
   GoLiveVerdict,
+  PlatformUser,
   Requirement,
   RequirementStatus,
   TestCase,
@@ -68,6 +70,8 @@ export type BackendUser = {
   first_name?: string;
   last_name?: string;
   role: string;
+  date_suppression?: string | null;
+  locked_until?: string | null;
 };
 
 export type LoginResponse = {
@@ -136,12 +140,15 @@ export type BackendAnomaly = {
   status: string;
   created_at: string;
   correction_due_date?: string | null;
+  product_id?: number | null;
   feature_name?: string | null;
   campaign_name?: string | null;
   reporter_first_name?: string | null;
   reporter_last_name?: string | null;
   assignee_first_name?: string | null;
   assignee_last_name?: string | null;
+  reported_by?: number | null;
+  assigned_to?: number | null;
 };
 
 export type BackendRequirement = {
@@ -252,20 +259,23 @@ export function mapBackendTestCase(test: BackendTestCase, execution?: BackendTes
     executedAt: execution?.execution_date,
     duration: execution?.duration_seconds ? `${execution.duration_seconds} s` : undefined,
     evidence: [],
+    ...(execution ? { executionId: String(execution.id) } : {}),
   };
 }
 
-export function mapBackendUser(user: BackendUser) {
+export function mapBackendUser(user: BackendUser): PlatformUser {
   const role = user.role === "tester"
     ? "testeur"
     : user.role === "developer"
       ? "developpeur"
       : user.role;
+  const locked = user.locked_until ? new Date(user.locked_until).getTime() : 0;
   return {
     id: String(user.id),
     name: [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email,
     email: user.email,
-    role,
+    role: role as AppRole,
+    active: user.date_suppression == null && locked <= Date.now(),
   };
 }
 
@@ -332,7 +342,7 @@ export function mapBackendProject(project: BackendProject) {
   } as const;
 }
 
-export function mapBackendAnomaly(anomaly: BackendAnomaly) {
+export function mapBackendAnomaly(anomaly: BackendAnomaly): Defect {
   const statusMap = {
     new: "nouvelle",
     in_progress: "encorrection",
@@ -344,7 +354,8 @@ export function mapBackendAnomaly(anomaly: BackendAnomaly) {
   const fullName = (first?: string | null, last?: string | null) => [first, last].filter(Boolean).join(" ");
   return {
     id: String(anomaly.id),
-    productId: "",
+    productId: anomaly.product_id ? String(anomaly.product_id) : "",
+    campaignId: String(anomaly.campaign_id),
     title: anomaly.description.slice(0, 80),
     description: anomaly.description,
     severity: "moyenne",
@@ -353,11 +364,11 @@ export function mapBackendAnomaly(anomaly: BackendAnomaly) {
     featureId: String(anomaly.feature_id),
     version: "",
     testId: anomaly.test_case_id ? String(anomaly.test_case_id) : undefined,
-    reporter: fullName(anomaly.reporter_first_name, anomaly.reporter_last_name),
-    assignee: fullName(anomaly.assignee_first_name, anomaly.assignee_last_name),
+    reporter: fullName(anomaly.reporter_first_name, anomaly.reporter_last_name) || "—",
+    assignee: fullName(anomaly.assignee_first_name, anomaly.assignee_last_name) || "—",
     createdAt: anomaly.created_at,
     targetDate: anomaly.correction_due_date ?? "",
-  } as const;
+  };
 }
 
 export function mapBackendRequirement(requirement: BackendRequirement): Requirement {
@@ -464,4 +475,399 @@ export async function createGoLiveDecision(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/* ==========================================================================
+   ÉCRITURES BACKEND (CRUD) — types, mappers et appels API
+   ========================================================================== */
+
+export type BackendFeature = {
+  id: number;
+  campaign_id: number;
+  name: string;
+  description?: string | null;
+  priority?: string | null;
+  module?: string | null;
+  status?: string | null;
+};
+
+export type BackendRelease = {
+  id: number;
+  product_id: number;
+  version: string;
+  description?: string | null;
+  status?: string | null;
+  planned_date?: string | null;
+  released_at?: string | null;
+};
+
+/** Convertit un id local (string) en id backend numérique s'il en est un. */
+export function backendIdOf(id?: string | number | null): number | undefined {
+  if (id == null) return undefined;
+  const str = String(id);
+  return /^\d+$/.test(str) ? Number(str) : undefined;
+}
+
+/* ── Mappers frontend → backend ------------------------------------------------- */
+
+export function toBackendCampaignStatus(status?: string | null): string {
+  const map: Record<string, string> = {
+    planifiee: "planning",
+    encours: "in_progress",
+    terminee: "completed",
+    avenir: "planning",
+    archived: "archived",
+  };
+  return map[status ?? ""] ?? "planning";
+}
+
+export function toBackendOrgMode(type?: string | null): string {
+  const map: Record<string, string> = {
+    exploratoire: "exploratory",
+    scenario: "scenario",
+    combinaison: "combination",
+    combine: "combination",
+  };
+  return map[type ?? ""] ?? "exploratory";
+}
+
+export function toBackendPriority(criticality?: string | null): string {
+  const map: Record<string, string> = {
+    critique: "critical",
+    haute: "high",
+    moyenne: "medium",
+    basse: "low",
+  };
+  return map[criticality ?? ""] ?? "medium";
+}
+
+export function toFrontendCriticality(priority?: string | null): Criticality {
+  const map: Record<string, Criticality> = {
+    critical: "critique",
+    high: "haute",
+    medium: "moyenne",
+    low: "basse",
+  };
+  return map[priority ?? ""] ?? "moyenne";
+}
+
+export function toBackendDefectStatus(status?: string | null): string {
+  const map: Record<string, string> = {
+    nouvelle: "new",
+    encorrection: "in_progress",
+    a_retester: "resolution_signaled",
+    fermee: "validated",
+    reouverte: "rejected",
+  };
+  return map[status ?? ""] ?? "new";
+}
+
+export function toBackendRequirementStatus(status?: string | null): string {
+  const map: Record<string, string> = {
+    brouillon: "proposed",
+    validee: "validated",
+    couverte: "approved",
+  };
+  return map[status ?? ""] ?? "proposed";
+}
+
+export function toBackendRequirementCategory(category?: string | null): string | undefined {
+  const allowed = [
+    "fonctionnelle",
+    "securite",
+    "performance",
+    "disponibilite",
+    "ergonomie",
+    "accessibilite",
+    "maintenabilite",
+    "compatibilite",
+    "resilience",
+    "observabilite",
+    "documentation",
+    "testabilite",
+    "custom",
+  ];
+  return category && allowed.includes(category) ? category : undefined;
+}
+
+export function toBackendVerdict(verdict?: string | null): string {
+  const map: Record<string, string> = {
+    PASS: "passed",
+    PASS_WITH_RESERVATION: "passed",
+    FAIL: "failed",
+    BLOCKED: "blocked",
+    NOT_RUN: "not_run",
+    NOT_APPLICABLE: "skipped",
+  };
+  return map[verdict ?? ""] ?? "not_run";
+}
+
+export function toBackendReleaseStatus(status?: string | null): string {
+  const map: Record<string, string> = {
+    planning: "planned",
+    in_dev: "in_progress",
+    in_test: "in_progress",
+    ready: "planned",
+    released: "released",
+    archived: "cancelled",
+  };
+  return map[status ?? ""] ?? "planned";
+}
+
+export function toBackendWatchStatus(status?: string | null): string {
+  const map: Record<string, string> = {
+    ouvert: "open",
+    suivi: "validated",
+    clos: "passed",
+  };
+  return map[status ?? ""] ?? "open";
+}
+
+export function toBackendWatchCriticality(level?: string | null): string {
+  const map: Record<string, string> = {
+    critique: "critical",
+    vigilance: "high",
+    info: "low",
+  };
+  return map[level ?? ""] ?? "medium";
+}
+
+/* ── Produits ---------------------------------------------------------------- */
+
+export async function createProduct(payload: { name: string | undefined; description: string | undefined; owner_id?: number | null; quality_manager_id?: number | null }) {
+  return api<{ product: BackendProduct }>("/products", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateProductById(id: number, patch: { name: string | undefined; description: string | undefined; owner_id?: number | null; quality_manager_id?: number | null }) {
+  return api<{ product: BackendProduct }>(`/products/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export async function deleteProductById(id: number) {
+  return api<void>(`/products/${id}`, { method: "DELETE" });
+}
+
+/* ── Projets ----------------------------------------------------------------- */
+
+export type BackendProjectPayload = {
+  name: string | undefined;
+  description: string | undefined;
+  start_date?: string;
+  end_date?: string;
+  test_lead_ids?: number[];
+  product_id?: number | null;
+};
+
+export async function createProject(payload: BackendProjectPayload) {
+  return api<{ project: BackendProject }>("/projects", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateProjectById(id: number, patch: BackendProjectPayload) {
+  return api<{ project: BackendProject }>(`/projects/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export async function archiveProjectById(id: number, archive: boolean) {
+  return api<{ project: BackendProject }>(`/projects/${id}/${archive ? "archive" : "unarchive"}`, { method: "PATCH" });
+}
+
+export async function deleteProjectById(id: number) {
+  return api<void>(`/projects/${id}`, { method: "DELETE" });
+}
+
+/* ── Campagnes --------------------------------------------------------------- */
+
+export type BackendCampaignPayload = {
+  project_id: number;
+  name?: string;
+  objective?: string;
+  organization_mode?: string;
+  status?: string;
+  start_date?: string;
+  end_date?: string;
+  test_lead_ids?: number[];
+  testers?: number[];
+  developers?: number[];
+  release_id?: number | null;
+  environment_id?: number | null;
+};
+
+export async function createCampaign(payload: BackendCampaignPayload) {
+  return api<{ campaign: BackendCampaign }>("/campaigns", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateCampaignById(id: number, patch: { name: string | undefined; status: string | undefined; start_date: string | undefined; end_date: string | undefined }) {
+  return api<{ campaign: BackendCampaign }>(`/campaigns/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export async function deleteCampaignById(id: number) {
+  return api<void>(`/campaigns/${id}`, { method: "DELETE" });
+}
+
+/* ── Fonctionnalités --------------------------------------------------------- */
+
+export async function createFeature(payload: { campaign_id: number; name: string; description?: string; priority?: string; module?: string }) {
+  return api<{ feature: BackendFeature }>("/features", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateFeatureById(id: number, patch: { name: string | undefined; description: string | undefined; priority: string | undefined; module: string | undefined }) {
+  return api<{ feature: BackendFeature }>(`/features/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export async function deleteFeatureById(id: number) {
+  return api<void>(`/features/${id}`, { method: "DELETE" });
+}
+
+/* ── Cas de test ------------------------------------------------------------- */
+
+export async function createTestCase(payload: {
+  campaign_id?: number;
+  feature_id?: number;
+  name: string;
+  description?: string;
+  expected_result?: string;
+  steps?: string[];
+  steps_text?: string;
+  priority?: string;
+  type?: string;
+}) {
+  const body: Record<string, unknown> = {
+    campaign_id: payload.campaign_id,
+    feature_id: payload.feature_id,
+    name: payload.name,
+    description: payload.description,
+    expected_result: payload.expected_result,
+    priority: payload.priority,
+    test_type: payload.type,
+  };
+  if (payload.steps) body["steps"] = payload.steps.join("\n");
+  else if (payload.steps_text) body["steps"] = payload.steps_text;
+  return api<BackendTestCase>("/test-cases", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateTestCaseById(id: number, patch: { name?: string; description?: string; expected_result?: string; steps?: string[]; steps_text?: string; priority?: string; type?: string }) {
+  const body: Record<string, unknown> = {
+    name: patch.name,
+    description: patch.description,
+    expected_result: patch.expected_result,
+    priority: patch.priority,
+    test_type: patch.type,
+  };
+  if (patch.steps) body["steps"] = patch.steps.join("\n");
+  else if (patch.steps_text) body["steps"] = patch.steps_text;
+  return api<BackendTestCase>(`/test-cases/${id}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export async function deleteTestCaseById(id: number) {
+  return api<void>(`/test-cases/${id}`, { method: "DELETE" });
+}
+
+/* ── Exécutions de test ------------------------------------------------------ */
+
+export async function createExecution(payload: {
+  test_case_id: number;
+  campaign_id: number;
+  result: string;
+  execution_date?: string;
+  duration_seconds?: number;
+  environment?: string;
+  notes: string | undefined;
+  actual_behavior: string | undefined;
+}) {
+  return api<BackendTestExecution>("/test-executions", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateExecutionById(id: number, patch: { result: string | undefined; notes: string | undefined; actual_behavior: string | undefined; duration_seconds?: number | null }) {
+  return api<BackendTestExecution>(`/test-executions/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export async function deleteExecutionById(id: number) {
+  return api<void>(`/test-executions/${id}`, { method: "DELETE" });
+}
+
+/* ── Anomalies --------------------------------------------------------------- */
+
+export async function createAnomaly(payload: {
+  feature_id: number;
+  campaign_id: number;
+  description: string;
+  reported_by?: number;
+  assigned_to?: number;
+  test_case_id?: number;
+  correction_due_date?: string;
+}) {
+  return api<{ anomaly: BackendAnomaly }>("/anomalies", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateAnomalyById(id: number, patch: { description: string | undefined; status: string | undefined; correction_due_date: string | undefined }) {
+  return api<{ anomaly: BackendAnomaly }>(`/anomalies/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export async function deleteAnomalyById(id: number) {
+  return api<void>(`/anomalies/${id}`, { method: "DELETE" });
+}
+
+/* ── Exigences --------------------------------------------------------------- */
+
+export async function createRequirement(payload: { feature_id: number; title: string; description?: string; category?: string; status?: string }) {
+  return api<BackendRequirement>("/requirements", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateRequirementById(id: number, patch: { title: string | undefined; description: string | undefined; status: string | undefined }) {
+  return api<BackendRequirement>(`/requirements/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export async function deleteRequirementById(id: number) {
+  return api<void>(`/requirements/${id}`, { method: "DELETE" });
+}
+
+/* ── Points à surveiller ----------------------------------------------------- */
+
+export async function createWatchPoint(payload: {
+  project_id: number;
+  campaign_id?: number;
+  feature_id: number | undefined;
+  title: string;
+  description: string;
+  criticality?: string;
+  status?: string;
+  owner_id?: number;
+}) {
+  return api<BackendWatchPoint>("/watch-points", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateWatchPointById(id: number, patch: { title: string | undefined; description: string | undefined; criticality: string | undefined; status: string | undefined }) {
+  return api<BackendWatchPoint>(`/watch-points/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export async function deleteWatchPointById(id: number) {
+  return api<void>(`/watch-points/${id}`, { method: "DELETE" });
+}
+
+/* ── Releases (rattachées à un produit) -------------------------------------- */
+
+export async function createRelease(productId: number, payload: { version: string | undefined; description?: string; status: string | undefined; planned_date: string | undefined }) {
+  return api<{ release: BackendRelease }>(`/products/${productId}/releases`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateReleaseById(productId: number, releaseId: number, patch: { version: string | undefined; description: string | undefined; status: string | undefined; planned_date: string | undefined }) {
+  return api<{ release: BackendRelease }>(`/products/${productId}/releases/${releaseId}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export async function deleteReleaseById(productId: number, releaseId: number) {
+  return api<void>(`/products/${productId}/releases/${releaseId}`, { method: "DELETE" });
+}
+
+/* ── Tableau de bord --------------------------------------------------------- */
+
+export type BackendDashboardStats = {
+  products?: number;
+  projects?: number;
+  campaigns?: number;
+  testCases?: number;
+  anomalies?: number;
+  users?: number;
+  [key: string]: unknown;
+};
+
+export async function getDashboardStats() {
+  return api<BackendDashboardStats>("/dashboard/stats");
 }

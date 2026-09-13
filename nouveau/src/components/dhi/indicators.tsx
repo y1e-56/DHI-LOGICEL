@@ -132,9 +132,9 @@ export function DefectStatusBadge({ status }: { status: DefectStatus }) {
       className={cn(
         pill,
         status === "nouvelle" && "border-info/30 bg-info-soft text-info",
-        status === "affectee" && "border-border bg-secondary text-secondary-foreground",
-        status === "encorrection" && "border-warning/40 bg-warning-soft text-warning",
-        status === "a_retester" && "border-warning/40 bg-warning-soft text-warning",
+        status === "reouverte" && "border-destructive/30 bg-destructive/10 text-destructive",
+        (status === "encorrection" || status === "a_retester") &&
+          "border-warning/40 bg-warning-soft text-warning",
         status === "fermee" && "border-success/30 bg-success-soft text-success",
       )}
     >

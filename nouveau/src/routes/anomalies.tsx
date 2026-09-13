@@ -258,10 +258,15 @@ function DefectsList() {
                 </TableCell>
                 <TableCell className="text-sm">
                   {(() => {
-                    const test = d.testId ? tests.find((item) => item.id === d.testId) : undefined;
-                    const campaign = test
-                      ? campaigns.find((item) => item.id === test.campaignId)
+                    const direct = d.campaignId
+                      ? campaigns.find((item) => item.id === d.campaignId)
                       : undefined;
+                    const test = direct
+                      ? undefined
+                      : d.testId
+                        ? tests.find((item) => item.id === d.testId)
+                        : undefined;
+                    const campaign = direct ?? (test ? campaigns.find((item) => item.id === test.campaignId) : undefined);
                     return campaign ? (
                       <Link
                         to="/campagnes/$campaignId"

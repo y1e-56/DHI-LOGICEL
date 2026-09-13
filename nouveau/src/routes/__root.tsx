@@ -12,7 +12,8 @@ import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { DhiStoreProvider, loadSession, validateSessionBackend } from "@/lib/dhi-store";
+import { DhiStoreProvider, loadSession, validateSessionBackend, useStore } from "@/lib/dhi-store";
+import { hasAccessToPage, getRedirectForUnauthorizedAccess } from "@/lib/role-protection";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 
 function NotFoundComponent() {
@@ -78,11 +79,15 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     if (typeof window === "undefined") return undefined;
-    if (!loadSession()) return undefined;
+    const session = loadSession();
+    if (!session) return undefined;
     const valid = await validateSessionBackend();
     if (!valid) return { redirect: "/login" } as const;
+    if (location.pathname !== "/login" && !hasAccessToPage(location.pathname)) {
+      return { redirect: getRedirectForUnauthorizedAccess(location.pathname) } as const;
+    }
     return undefined;
   },
   head: () => ({
@@ -160,6 +165,25 @@ function ClientOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function BackendStatusBanner() {
+  const { backendStatus, reloadFromBackend } = useStore();
+  if (backendStatus !== "offline") return null;
+  return (
+    <div className="z-50 flex items-center justify-center gap-3 border-b border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
+      <span>
+        Backend indisponible : les données affichées peuvent être locales et les
+        écritures ne sont pas synchronisées.
+      </span>
+      <button
+        onClick={() => reloadFromBackend()}
+        className="rounded-md border border-danger/40 bg-background px-2 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger hover:text-danger-foreground"
+      >
+        Réessayer
+      </button>
+    </div>
+  );
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   console.log("[DHI] RootComponent RENDERED, queryClient=", !!queryClient);
@@ -169,6 +193,7 @@ function RootComponent() {
       <I18nProvider>
         <DhiStoreProvider>
           <ClientOnly>
+            <BackendStatusBanner />
             <Outlet />
             <Toaster richColors position="bottom-right" />
           </ClientOnly>

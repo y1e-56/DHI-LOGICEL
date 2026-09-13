@@ -82,22 +82,65 @@ function CampaignTests() {
           </div>
         </div>
         <Table>
-          <TableHeader><TableRow>
-            <TableHead>{t("common.id")}</TableHead><TableHead>{t("pages.campaign_detail.test")}</TableHead>
-            <TableHead>{t("common.criticite")}</TableHead><TableHead>{t("common.type")}</TableHead>
-            <TableHead>{t("common.verdict")}</TableHead><TableHead>{t("common.testeur")}</TableHead>
-            <TableHead className="text-right">{t("pages.campaign_detail.execution")}</TableHead>
-          </TableRow></TableHeader>
+<TableHeader>
+            <TableRow>
+              <TableHead>{t("common.id")}</TableHead>
+              <TableHead>{t("pages.campaign_detail.test")}</TableHead>
+              <TableHead>{t("common.criticite")}</TableHead>
+              <TableHead>{t("common.type")}</TableHead>
+              <TableHead>{t("common.verdict")}</TableHead>
+              <TableHead>{t("pages.campaign_detail.resultat_obtenu")}</TableHead>
+              <TableHead>{t("common.testeur")}</TableHead>
+              <TableHead className="text-right">{t("pages.campaign_detail.execution")}</TableHead>
+            </TableRow>
+          </TableHeader>
           <TableBody>
-            {rows.map((test) => (
-              <TableRow key={test.id}>
-                <TableCell className="num font-medium">{test.id}</TableCell><TableCell className="max-w-xs truncate">{test.name}</TableCell>
-                <TableCell><CriticalityBadge level={test.criticality} /></TableCell><TableCell className="text-sm capitalize">{test.type.replace(/_/g, " ")}</TableCell>
-                <TableCell><VerdictBadge verdict={test.verdict} /></TableCell><TableCell className="text-sm">{test.tester ?? "—"}</TableCell>
-                <TableCell className="text-right">{campaign?.status === "terminee" ? <span className="text-xs text-muted-foreground">{t("pages.campaign_detail.campagne_verrouillee")}</span> : <Link to="/execution/$testId" params={{ testId: test.id }} className="text-xs font-medium text-primary hover:underline">{t("pages.campaign_detail.executer")}</Link>}</TableCell>
+            {rows.map((tc) => (
+              <TableRow key={tc.id}>
+                <TableCell className="num font-medium">{tc.id}</TableCell>
+                <TableCell className="max-w-xs truncate">{tc.name}</TableCell>
+                <TableCell>
+                  <CriticalityBadge level={tc.criticality} />
+                </TableCell>
+                <TableCell className="text-sm capitalize">{tc.type.replace(/_/g, " ")}</TableCell>
+                <TableCell>
+                  <VerdictBadge verdict={tc.verdict} />
+                </TableCell>
+                <TableCell className="max-w-[220px]">
+                  <span
+                    className="block truncate text-sm"
+                    title={
+                      [tc.observed, tc.comment].filter(Boolean).join(" — ") || t("pages.campaign_detail.vide_paren")
+                    }
+                  >
+                    {tc.observed || "—"}
+                  </span>
+                </TableCell>
+                <TableCell className="text-sm">{tc.tester ?? "—"}</TableCell>
+                <TableCell className="text-right">
+                  {campaign?.status === "terminee" ? (
+                    <span className="text-xs text-muted-foreground">
+                      {t("pages.campaign_detail.campagne_verrouillee")}
+                    </span>
+                  ) : (
+                    <Link
+                      to="/execution/$testId"
+                      params={{ testId: tc.id }}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      {t("pages.campaign_detail.executer")}
+                    </Link>
+                  )}
+                </TableCell>
               </TableRow>
             ))}
-            {rows.length === 0 ? <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{t("pages.product_detail.no_campaigns_for_product")}</TableCell></TableRow> : null}
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  {t("pages.product_detail.no_campaigns_for_product")}
+                </TableCell>
+              </TableRow>
+            ) : null}
           </TableBody>
         </Table>
       </div>

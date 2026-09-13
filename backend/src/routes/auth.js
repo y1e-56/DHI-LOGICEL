@@ -303,6 +303,28 @@ router.get('/users', authenticate, requireAdmin, async (req, res) => {
 
 /**
  * @swagger
+ * /auth/members:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Lister les membres actifs (tout utilisateur authentifiÃ©, pour l'affichage Ã©quipe/assignation)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Liste des utilisateurs actifs
+ *         content:
+ *           application/json:
+ *             type: array
+ *             items: { $ref: '#/components/schemas/User' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ */
+router.get('/members', authenticate, async (req, res) => {
+  const users = await authService.listUsers();
+  res.json(users);
+});
+
+/**
+ * @swagger
  * /auth/users/{id}/block:
  *   patch:
  *     tags: [Auth]

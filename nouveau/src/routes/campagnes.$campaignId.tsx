@@ -74,25 +74,40 @@ type Campaign = (typeof seedCampaigns)[number];
 
 type TranslateFn = (key: TranslationKey, fallback?: string) => string;
 
-function exportPdf(list: TestStats["list"], campaignName: string, t: TranslateFn) {
-  const reportWindow = window.open("", "_blank", "width=1000,height=800");
-  if (!reportWindow) {
-    toast.error(t("pages.campaign_detail.rapport_popup_bloque"));
-    return;
-  }
+function csvField(value: string): string {
+  return value.includes(";") || value.includes('"') || value.includes("\n")
+    ? `"${value.replace(/"/g, '""')}"`
+    : value;
+}
 
+function exportCsv(list: TestStats["list"], campaignName: string, t: TranslateFn) {
+  const header =
+    "id;nom;criticite;type;verdict;testeur;preconditions;steps;resultat_attendu;resultat_obtenu;commentaires;date\n";
   const rows = list
-    .map(
-      (test) =>
-        `<tr><td>${test.id}</td><td>${test.name}</td><td>${test.criticality}</td><td>${test.verdict}</td><td>${test.tester ?? "-"}</td><td>${test.executedAt ?? "-"}</td></tr>`,
+    .map((x) =>
+      [
+        x.id,
+        csvField(x.name),
+        x.criticality,
+        x.type,
+        x.verdict,
+        csvField(x.tester ?? ""),
+        csvField(x.preconditions.join("|||")),
+        csvField(x.steps.join("|||")),
+        csvField(x.expected.join("|||")),
+        csvField(x.observed ?? ""),
+        csvField(x.comment ?? ""),
+        csvField(x.executedAt ?? ""),
+      ].join(";"),
     )
-    .join("");
-  reportWindow.document.write(`<!doctype html><html><head><title>Rapport - ${campaignName}</title><style>
-    body{font-family:Arial,sans-serif;color:#172033;padding:32px}h1{font-size:24px;margin-bottom:24px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #d8dee9;padding:8px;text-align:left}th{background:#f1f4f8}
-  </style></head><body><h1>Rapport de campagne : ${campaignName}</h1><table><thead><tr><th>ID</th><th>Nom</th><th>Criticité</th><th>Verdict</th><th>Testeur</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
-  reportWindow.document.close();
-  reportWindow.focus();
-  reportWindow.print();
+    .join("\n");
+  const blob = new Blob([header + rows], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `rapport-${campaignName.replace(/\s+/g, "-")}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
   toast.success(t("pages.campaign_detail.rapport_exporte"));
 }
 
@@ -279,6 +294,7 @@ function CampaignTestsTable({
             <TableHead>{t("common.criticite")}</TableHead>
             <TableHead>{t("common.type")}</TableHead>
             <TableHead>{t("common.verdict")}</TableHead>
+            <TableHead>{t("pages.campaign_detail.resultat_obtenu")}</TableHead>
             <TableHead>{t("common.testeur")}</TableHead>
             <TableHead>{t("pages.campaign_detail.execution")}</TableHead>
             <TableHead className="text-right">{t("pages.campaign_detail.actions")}</TableHead>
@@ -291,7 +307,19 @@ function CampaignTestsTable({
               <TableCell className="max-w-xs truncate">{tc.name}</TableCell>
               <TableCell><CriticalityBadge level={tc.criticality} /></TableCell>
               <TableCell className="text-sm capitalize">{tc.type.replace(/_/g, " ")}</TableCell>
-              <TableCell><VerdictBadge verdict={tc.verdict} /></TableCell>
+<TableCell>
+                <VerdictBadge verdict={tc.verdict} />
+              </TableCell>
+              <TableCell className="max-w-[200px]">
+                <span
+                  className="block truncate text-sm"
+                  title={
+                    [tc.observed, tc.comment].filter(Boolean).join(" — ") || t("pages.campaign_detail.vide_paren")
+                  }
+                >
+                  {tc.observed || "—"}
+                </span>
+              </TableCell>
               <TableCell className="text-sm">
                 <Select value={tc.tester ?? ""} onValueChange={(v) => reassign(tc.id, v)} disabled={locked}>
                   <SelectTrigger className="h-8 w-40"><SelectValue placeholder="—" /></SelectTrigger>
@@ -433,7 +461,9 @@ const CSV_TEMPLATE_HEADERS = [
   "testeur",
   "preconditions",
   "steps",
-  "expected",
+  "resultat_attendu",
+  "resultat_obtenu",
+  "commentaires",
 ];
 
 function exportTemplateCsv(featureList: Feature[], t: TranslateFn) {
@@ -450,6 +480,8 @@ function exportTemplateCsv(featureList: Feature[], t: TranslateFn) {
     "Utilisateur enregistré|||Page de connexion ouverte",
     "Saisir email|||Saisir mdp demo|||Cliquer sur Se connecter",
     "Champ email ok|||Champ mdp ok|||Redirection tableau de bord",
+    "Comportement conforme (ou à renseigner à l'exécution)",
+    "Commentaire optionnel",
   ]
     .map((v) => (v.includes(CSV_SEP) || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v))
     .join(CSV_SEP);
@@ -580,7 +612,7 @@ function CampaignDetail() {
   const failedTests = st.list.filter((t) => t.verdict === "FAIL");
   const campaignFeatures = features.filter((f) => f.productId === campaign.productId);
 
-  const onExport = () => exportPdf(st.list, campaign.name, t);
+  const onExport = () => exportCsv(st.list, campaign.name, t);
   const onTransition = () => transitionCampaign(campaign, updateCampaign, t);
   const onExportTemplate = () => exportTemplateCsv(campaignFeatures, t);
 

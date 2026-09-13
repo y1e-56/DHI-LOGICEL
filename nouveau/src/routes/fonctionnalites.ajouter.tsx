@@ -36,6 +36,7 @@ export const Route = createFileRoute("/fonctionnalites/ajouter")({
 type FeatureForm = {
   name: string;
   productId: string;
+  campaignId: string;
   criticality: Criticality;
   description: string;
   coverage: Set<TestType>;
@@ -46,11 +47,12 @@ type FeatureForm = {
 function CreateFeaturePage() {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { products, requirements, productDocuments, addFeature, updateRequirement } = useStore();
+  const { products, requirements, productDocuments, campaigns, addFeature, updateRequirement } = useStore();
 
   const [form, setForm] = useState<FeatureForm>({
     name: "",
     productId: products[0]?.id ?? "",
+    campaignId: "",
     criticality: "moyenne",
     description: "",
     coverage: new Set(),
@@ -60,6 +62,7 @@ function CreateFeaturePage() {
 
   const productRequirements = requirements.filter((r) => r.productId === form.productId);
   const productDocs = productDocuments.filter((d) => d.productId === form.productId);
+  const productCampaigns = campaigns.filter((c) => c.productId === form.productId);
 
   const toggleCoverage = (testType: TestType) => {
     setForm((f) => {
@@ -104,6 +107,7 @@ function CreateFeaturePage() {
     for (const tt of TEST_TYPES) coverage[tt.id] = form.coverage.has(tt.id);
     const fid = addFeature({
       productId: form.productId,
+      campaignId: form.campaignId || undefined,
       name: form.name.trim(),
       description: form.description,
       criticality: form.criticality,
@@ -167,7 +171,7 @@ function CreateFeaturePage() {
                   <Select
                     value={form.productId}
                     onValueChange={(v) =>
-                      setForm((f) => ({ ...f, productId: v, requirementIds: [], sourceDocId: "" }))
+                      setForm((f) => ({ ...f, productId: v, campaignId: "", requirementIds: [], sourceDocId: "" }))
                     }
                   >
                     <SelectTrigger>
@@ -200,6 +204,44 @@ function CreateFeaturePage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label>
+                  {t("pages.features.campaign_choice")}{" "}
+                  <span className="font-normal text-muted-foreground">
+                    ({t("pages.features.optional")})
+                  </span>
+                </Label>
+                <Select
+                  value={form.campaignId}
+                  onValueChange={(v) => setForm((f) => ({ ...f, campaignId: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("pages.features.campaign_auto")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {productCampaigns.length === 0 ? (
+                      <SelectItem value="" disabled>
+                        {t("pages.features.no_campaign_for_product")}
+                      </SelectItem>
+                    ) : (
+                      <>
+                        <SelectItem value="">{t("pages.features.campaign_auto")}</SelectItem>
+                        {productCampaigns.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+                {productCampaigns.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t("pages.features.sync_no_campaign")}
+                  </p>
+                )}
               </div>
 
               <div className="grid gap-1.5">

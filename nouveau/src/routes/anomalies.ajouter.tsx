@@ -16,7 +16,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { SEVERITY_LABEL, type Severity } from "@/lib/dhi-data";
 
-import { api, mapBackendAnomaly, type BackendAnomaly } from "@/lib/api";
+import { api, mapBackendAnomaly, backendIdOf, type BackendAnomaly } from "@/lib/api";
 import { useStore } from "@/lib/dhi-store";
 import { useI18n } from "@/lib/i18n";
 import { useVisibleProducts } from "@/lib/use-scope";
@@ -74,6 +74,7 @@ function CreateDefectPage() {
     }
     const base = {
       productId: form.productId,
+      campaignId: form.campaignId,
       title: form.title.trim(),
       description: form.description,
       severity: form.severity,
@@ -90,6 +91,8 @@ function CreateDefectPage() {
 
     const numericFeatureId = Number(form.featureId);
     const numericCampaignId = Number(form.campaignId);
+    const reporterBackend = users.find((u) => u.active && u.name === base.reporter);
+    const assigneeBackend = users.find((u) => u.active && u.name === form.assignee);
     const eligibleForBackend =
       localStorage.getItem("token") &&
       Number.isInteger(numericFeatureId) &&
@@ -99,6 +102,8 @@ function CreateDefectPage() {
 
     if (eligibleForBackend) {
       try {
+        const reportedBy = backendIdOf(reporterBackend?.id);
+        const assignedTo = backendIdOf(assigneeBackend?.id);
         const { anomaly } = await api<{ anomaly: BackendAnomaly }>("/anomalies", {
           method: "POST",
           body: JSON.stringify({
@@ -106,9 +111,12 @@ function CreateDefectPage() {
             campaign_id: numericCampaignId,
             description: form.title.trim(),
             correction_due_date: base.targetDate,
+            reported_by: reportedBy,
+            assigned_to: assignedTo,
           }),
         });
-        addDefect(mapBackendAnomaly(anomaly));
+        const mapped = mapBackendAnomaly(anomaly);
+        addDefect({ ...mapped, productId: mapped.productId || form.productId });
         toast.success(
           t("pages.anomalies.created_msg").replace("{id}", `ANO-${anomaly.id}`),
         );

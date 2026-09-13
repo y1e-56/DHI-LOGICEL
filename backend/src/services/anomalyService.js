@@ -92,7 +92,7 @@ export async function updateAnomaly(id, data, userId = null) {
     if (data.status === 'resolution_signaled') {
       const existing = await db.anomalies.findById(id);
       if (!existing) throw new AppError('Anomalie non trouvée', 404);
-      if (existing.status !== 'in_progress' && existing.status !== 'nouvelle') {
+      if (existing.status !== 'in_progress' && existing.status !== 'new') {
         throw new AppError('Impossible de signaler la résolution dans le statut actuel', 400);
       }
     }

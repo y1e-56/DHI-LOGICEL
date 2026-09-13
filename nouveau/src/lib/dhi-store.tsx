@@ -20,6 +20,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 
 /* -------------------------------------------------------------------------- */
 /*  1. IMPORTS MÉTIERS                                                         */
@@ -80,19 +81,58 @@ import {
 import {
   ApiError,
   api,
+  backendIdOf,
   mapBackendAnomaly,
   mapBackendCampaign,
   mapBackendGoLiveDecision,
   mapBackendProduct,
   mapBackendProject,
   mapBackendRequirement,
+  mapBackendTestCase,
   mapBackendUser,
   mapBackendWatchPoint,
   getGoLiveChecklist,
   getGoLiveDecisions,
   createGoLiveDecision,
   updateGoLiveChecklistItem,
+  createProduct,
+  updateProductById,
+  deleteProductById,
+  createProject,
+  updateProjectById,
+  deleteProjectById,
+  createCampaign,
+  updateCampaignById,
+  deleteCampaignById,
+  createFeature,
+  updateFeatureById,
+  deleteFeatureById,
+  createTestCase,
+  deleteTestCaseById,
+  createExecution,
+  updateExecutionById,
+  createAnomaly,
+  updateAnomalyById,
+  deleteAnomalyById,
+  createRequirement,
+  updateRequirementById,
+  deleteRequirementById,
+  createWatchPoint,
+  updateWatchPointById,
+  deleteWatchPointById,
+  createRelease,
+  updateReleaseById,
+  toBackendCampaignStatus,
+  toBackendPriority,
+  toFrontendCriticality,
+  toBackendDefectStatus,
+  toBackendRequirementStatus,
+  toBackendVerdict,
+  toBackendReleaseStatus,
+  toBackendWatchStatus,
+  toBackendWatchCriticality,
   ROLE_TO_BACKEND,
+  type BackendUser,
   type BackendCampaign,
   type BackendAnomaly,
   type BackendGoLiveDecision,
@@ -100,6 +140,9 @@ import {
   type BackendWatchPoint,
   type BackendProduct,
   type BackendProject,
+  type BackendFeature,
+  type BackendTestCase,
+  type BackendTestExecution,
   type LoginResponse,
 } from "./api";
 
@@ -265,6 +308,8 @@ interface Store {
   /*  2.2  Session / Auth -----------------------------------------------  */
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string; user?: SessionUser }>;
   logout: () => void;
+  backendStatus: "checking" | "online" | "offline";
+  reloadFromBackend: () => void;
 
   /*  2.3  Mutations : Produits / Projets / Features --------------------  */
   addProduct: (p: Omit<Product, "id" | "breakdown" | "lastUpdate">) => string;
@@ -275,7 +320,7 @@ interface Store {
   replaceProjects: (projects: Project[]) => void;
   updateProject: (id: string, patch: Partial<Project>) => void;
   deleteProject: (id: string) => void;
-  addFeature: (f: Omit<Feature, "id">) => string;
+  addFeature: (f: Omit<Feature, "id"> & { campaignId?: string | undefined }) => string;
   updateFeature: (id: string, patch: Partial<Feature>) => void;
   deleteFeature: (id: string) => void;
 
@@ -289,7 +334,13 @@ interface Store {
   replaceCampaigns: (campaigns: Campaign[]) => void;
   updateCampaign: (id: string, patch: Partial<Campaign>) => void;
   deleteCampaign: (id: string) => void;
-  addTestCase: (t: Omit<TestCase, "id" | "verdict" | "observed" | "comment" | "evidence"> & { verdict?: Verdict }) => string;
+  addTestCase: (
+      t: Omit<TestCase, "id" | "verdict" | "observed" | "comment" | "evidence"> & {
+        verdict?: Verdict;
+        observed?: string;
+        comment?: string;
+      },
+    ) => string;
   updateTest: (id: string, patch: Partial<TestCase>) => void;
   deleteTest: (id: string) => void;
 
@@ -387,6 +438,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
     return Array.from(byId.values());
   });
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(initialSession);
+  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("online");
   const [productDocuments, setProductDocuments] = useState<ProductDocument[]>(
     initialSnap.productDocuments ?? seedProductDocuments,
   );
@@ -491,6 +543,142 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /*  4.2.1  Helpers de synchronisation backend ---------------------------  */
+
+  const syncEnabled = () => !!currentUser && !!localStorage.getItem("token");
+
+  const attemptBackend = (label: string, fn: () => Promise<unknown>) => {
+    if (!syncEnabled()) return Promise.resolve();
+    return Promise.resolve()
+      .then(fn)
+      .then(() => setBackendStatus("online"))
+      .catch((error) => {
+        if (error instanceof TypeError) {
+          setBackendStatus("offline");
+        } else if (error instanceof ApiError) {
+          toast.error(label, { description: error.message });
+        } else {
+          console.error(`[DHI][sync] ${label}`, error);
+        }
+      });
+  };
+
+  const refreshFromBackend = async () => {
+    if (!syncEnabled()) return;
+    setBackendStatus("checking");
+    try {
+      const [backendProducts, backendProjects, backendCampaigns] = await Promise.all([
+        api<BackendProduct[]>("/products"),
+        api<BackendProject[]>("/projects"),
+        api<BackendCampaign[]>("/campaigns"),
+      ]);
+      let backendUsers: PlatformUser[] | null = null;
+      try {
+        const roster = await api<BackendUser[]>("/auth/members");
+        backendUsers = roster.map(mapBackendUser);
+      } catch (error) {
+        console.warn("[DHI] Effectif non chargé", error);
+      }
+      const projectById = new Map(backendProjects.map((project) => [project.id, project]));
+
+      const featurePages = await Promise.all(
+        backendCampaigns.map((campaign) =>
+          api<BackendFeature[]>(`/features?campaignId=${campaign.id}`).then((items) => ({
+            campaignId: campaign.id,
+            items,
+          })),
+        ),
+      );
+      const testPages = await Promise.all(
+        backendCampaigns.map((campaign) =>
+          api<BackendTestCase[]>(`/test-cases?campaignId=${campaign.id}`).then((items) => ({
+            campaignId: campaign.id,
+            items,
+          })),
+        ),
+      );
+      const executionPages = await Promise.all(
+        backendCampaigns.map((campaign) =>
+          api<{ data: BackendTestExecution[] }>(`/test-executions?campaignId=${campaign.id}&limit=200`).then(
+            (page) => page.data,
+          ),
+        ),
+      );
+
+      const execByTest = new Map<string, BackendTestExecution[]>();
+      for (const list of executionPages) {
+        for (const exec of list) {
+          const key = String(exec.test_case_id);
+          const already = execByTest.get(key) ?? [];
+          already.push(exec);
+          execByTest.set(key, already);
+        }
+      }
+
+      const [anomalyPage, requirementPage] = await Promise.all([
+        api<{ data: BackendAnomaly[] }>("/anomalies?limit=200"),
+        api<{ data: BackendRequirement[] }>("/requirements?limit=200"),
+      ]);
+      const watchProjectPages = await Promise.all(
+        backendProjects
+          .filter((project) => !project.is_archived)
+          .map((project) =>
+            api<{ data: BackendWatchPoint[] }>(`/watch-points?projetId=${project.id}&limit=200`),
+          ),
+      );
+      const productByProject = new Map(backendProjects.map((project) => [project.id, project.product_id]));
+
+      setProducts(backendProducts.map(mapBackendProduct));
+      setProjects(backendProjects.map(mapBackendProject));
+      setCampaigns(
+        backendCampaigns.map((campaign) => mapBackendCampaign(campaign, projectById.get(campaign.project_id))),
+      );
+
+      // Fonctionnalités : union des fonctions par campagne, rattachées au produit du projet de la campagne.
+const featureById = new Map<string, Feature>();
+      for (const page of featurePages) {
+        const campaign = backendCampaigns.find((c) => c.id === page.campaignId);
+        const project = campaign ? projectById.get(campaign.project_id) : undefined;
+        const productId = project && project.product_id != null ? String(project.product_id) : "";
+        for (const feature of page.items) {
+          featureById.set(String(feature.id), {
+            id: String(feature.id),
+            productId,
+            name: feature.name,
+            description: feature.description ?? "",
+            criticality: toFrontendCriticality(feature.priority),
+            coverage: {},
+          });
+        }
+      }
+      setFeatures(Array.from(featureById.values()));
+
+      const nextTests: TestCase[] = [];
+      for (const page of testPages) {
+        for (const test of page.items) {
+          const execs = execByTest.get(String(test.id));
+          nextTests.push(mapBackendTestCase(test, execs?.[execs.length - 1]));
+        }
+      }
+      setTests(nextTests);
+
+      setDefects(anomalyPage.data.map(mapBackendAnomaly));
+      setRequirements(requirementPage.data.map(mapBackendRequirement));
+      setWatchPoints(
+        watchProjectPages.flatMap((page) =>
+          page.data.map((point) => mapBackendWatchPoint(point, String(productByProject.get(point.project_id) ?? ""))),
+        ),
+      );
+      if (backendUsers) setUsers(backendUsers);
+
+      await loadGoLiveFromBackend(releases);
+      setBackendStatus("online");
+    } catch (error) {
+      console.error("[DHI] Impossible de charger les données backend", error);
+      setBackendStatus("offline");
+    }
+  };
+
   useEffect(() => {
     if (currentUser && loadSession() === null) {
       setCurrentUser(null);
@@ -499,35 +687,8 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!currentUser || !localStorage.getItem("token")) return;
-    void Promise.all([
-      api<BackendProduct[]>("/products"),
-      api<BackendProject[]>("/projects"),
-      api<BackendCampaign[]>("/campaigns"),
-      api<{ data: BackendAnomaly[] }>("/anomalies?limit=200"),
-      api<{ data: BackendRequirement[] }>("/requirements?limit=200"),
-    ])
-      .then(async ([backendProducts, backendProjects, backendCampaigns, backendAnomalies, backendRequirements]) => {
-        setProducts(backendProducts.map(mapBackendProduct));
-        setProjects(backendProjects.map(mapBackendProject));
-        const projectById = new Map(backendProjects.map((project) => [project.id, project]));
-        setCampaigns(
-          backendCampaigns.map((campaign) => mapBackendCampaign(campaign, projectById.get(campaign.project_id))),
-        );
-        setDefects(backendAnomalies.data.map(mapBackendAnomaly));
-        setRequirements(backendRequirements.data.map(mapBackendRequirement));
-        await Promise.all([
-          (async () => {
-            const watchProjects = backendProjects;
-            const watchPointPages = await Promise.all(
-              watchProjects.filter((project) => !project.is_archived).map((project) => api<{ data: BackendWatchPoint[] }>(`/watch-points?projetId=${project.id}&limit=200`)),
-            );
-            const productByProject = new Map(watchProjects.map((project) => [project.id, project.product_id]));
-            setWatchPoints(watchPointPages.flatMap((page) => page.data.map((point) => mapBackendWatchPoint(point, String(productByProject.get(point.project_id) ?? "")))));
-          })(),
-          loadGoLiveFromBackend(releases),
-        ]);
-      })
-      .catch((error) => console.error("[DHI] Impossible de charger les campagnes backend", error));
+    setBackendStatus("checking");
+    void refreshFromBackend();
   }, [currentUser]);
 
   /*  4.2b  Effet : Scoring CDC dynamique (recalcule à chaque changement)  */
@@ -985,6 +1146,8 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       rules,
       users,
       currentUser,
+      backendStatus,
+      reloadFromBackend: () => void refreshFromBackend(),
       productDocuments,
       projectDocuments,
       campaignDocuments,
@@ -999,6 +1162,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
           });
           localStorage.setItem("token", result.token);
           const user = mapBackendUser(result.user) as SessionUser;
+          localStorage.removeItem(STORAGE_KEY);
           setCurrentUser(user);
           saveSession(user);
           return { ok: true, user };
@@ -1013,6 +1177,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         setCurrentUser(null);
         saveSession(null);
         localStorage.removeItem("token");
+        setBackendStatus("online");
       },
 
       /* Produits / Projets / Features --------------------------------  */
@@ -1035,13 +1200,26 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
             },
           },
         ]);
+        attemptBackend("Création produit", () =>
+          createProduct({ name: p.name, description: p.description }),
+        );
         return id;
       },
       replaceProducts: (nextProducts) => setProducts(nextProducts),
-      updateProduct: (id, patch) =>
+      updateProduct: (id, patch) => {
         setProducts((prev) =>
           prev.map((p) => (p.id === id ? { ...p, ...patch, lastUpdate: today() } : p)),
-        ),
+        );
+        const idBackend = backendIdOf(id);
+        if (idBackend) {
+          attemptBackend("Mise à jour produit", () =>
+            updateProductById(idBackend, {
+              name: patch.name,
+              description: patch.description,
+            }),
+          );
+        }
+      },
       deleteProduct: (id) => {
         setProducts((prev) => prev.filter((p) => p.id !== id));
         setFeatures((prev) => prev.filter((f) => f.productId !== id));
@@ -1049,47 +1227,142 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         setCampaigns((prev) => prev.filter((c) => c.productId !== id));
         setDefects((prev) => prev.filter((d) => d.productId !== id));
         setRequirements((prev) => prev.filter((r) => r.productId !== id));
+        const idBackend = backendIdOf(id);
+        if (idBackend) attemptBackend("Suppression produit", () => deleteProductById(idBackend));
         pushAudit(asActor("Système"), "Produit supprimé", id, "—");
       },
       addProject: (p) => {
         const id = `pr-${Date.now()}`;
         setProjects((prev) => [...prev, { ...p, id }]);
+        const productBackend = backendIdOf(p.productId);
+        attemptBackend("Création projet", () =>
+          createProject({
+            name: p.name,
+            description: p.objective,
+            product_id: productBackend ?? null,
+          }),
+        );
         return id;
       },
       replaceProjects: (nextProjects) => setProjects(nextProjects),
-      updateProject: (id, patch) =>
-        setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p))),
+      updateProject: (id, patch) => {
+        setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+        const idBackend = backendIdOf(id);
+        if (idBackend) {
+          attemptBackend("Mise à jour projet", () =>
+            updateProjectById(idBackend, {
+              name: patch.name,
+              description: patch.objective,
+              product_id: backendIdOf(patch.productId) ?? null,
+            }),
+          );
+        }
+      },
       deleteProject: (id) => {
         setProjects((prev) => prev.filter((p) => p.id !== id));
         setCampaigns((prev) => prev.filter((c) => c.projectId !== id));
         setReleases((prev) => prev.filter((r) => r.projectId !== id));
+        const idBackend = backendIdOf(id);
+        if (idBackend) attemptBackend("Suppression projet", () => deleteProjectById(idBackend));
         pushAudit(asActor("Système"), "Projet supprimé", id, "—");
       },
       addFeature: (f) => {
         const id = `f-${Date.now()}`;
         setFeatures((prev) => [...prev, { ...f, id }]);
+        const campaign = f.campaignId
+          ? campaigns.find((c) => c.id === f.campaignId)
+          : campaigns.find((c) => c.productId === f.productId);
+        const campaignBackend = backendIdOf(campaign?.id);
+        if (campaignBackend) {
+          attemptBackend("Création fonctionnalité", () =>
+            createFeature({
+              campaign_id: campaignBackend,
+              name: f.name,
+              description: f.description,
+              priority: toBackendPriority(f.criticality),
+            }),
+          );
+        } else if (!f.campaignId) {
+          toast.warning(
+            "Fonctionnalité enregistrée localement : aucune campagne de ce produit n'est synchronisée au back-office. Créez d'abord une campagne.",
+          );
+        }
         return id;
       },
-      updateFeature: (id, patch) =>
-        setFeatures((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f))),
+      updateFeature: (id, patch) => {
+        setFeatures((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+        const idBackend = backendIdOf(id);
+        if (idBackend) {
+          attemptBackend("Mise à jour fonctionnalité", () =>
+            updateFeatureById(idBackend, {
+              name: patch.name,
+              description: patch.description,
+              priority: toBackendPriority(patch.criticality),
+              module: undefined,
+            }),
+          );
+        }
+      },
       deleteFeature: (id) => {
         setFeatures((prev) => prev.filter((f) => f.id !== id));
         setTests((prev) => prev.filter((t) => t.featureId !== id));
         setDefects((prev) => prev.filter((d) => d.featureId !== id));
+        const idBackend = backendIdOf(id);
+        if (idBackend) attemptBackend("Suppression fonctionnalité", () => deleteFeatureById(idBackend));
       },
 
       /* Releases -----------------------------------------------------  */
       addRelease: (r) => {
         const id = `rel-${Date.now()}`;
         setReleases((prev) => [...prev, { ...r, id }]);
+        const project = projects.find((p) => p.id === r.projectId);
+        const productBackend = backendIdOf(project?.productId);
+        if (productBackend) {
+          attemptBackend("Création release", () =>
+            createRelease(productBackend, {
+              version: r.version,
+              status: toBackendReleaseStatus(r.status),
+              planned_date: r.plannedDate,
+            }),
+          );
+        }
         return id;
       },
-      updateRelease: (id, patch) =>
-        setReleases((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r))),
+      updateRelease: (id, patch) => {
+        setReleases((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+        const idBackend = backendIdOf(id);
+        const release = releases.find((r) => r.id === id);
+        const project = projects.find((p) => p.id === release?.projectId);
+        const productBackend = backendIdOf(project?.productId);
+        if (idBackend && productBackend) {
+          attemptBackend("Mise à jour release", () =>
+            updateReleaseById(productBackend, idBackend, {
+              version: patch.version,
+              description: undefined,
+              status: toBackendReleaseStatus(patch.status),
+              planned_date: patch.plannedDate,
+            }),
+          );
+        }
+      },
       setReleaseStatus: (id, status) => {
         setReleases((prev) =>
           prev.map((r) => (r.id === id ? { ...r, status } : r)),
         );
+        const idBackend = backendIdOf(id);
+        const release = releases.find((r) => r.id === id);
+        const project = projects.find((p) => p.id === release?.projectId);
+        const productBackend = backendIdOf(project?.productId);
+        if (idBackend && productBackend) {
+          attemptBackend("Statut release", () =>
+            updateReleaseById(productBackend, idBackend, {
+              version: undefined,
+              description: undefined,
+              status: toBackendReleaseStatus(status),
+              planned_date: undefined,
+            }),
+          );
+        }
         pushAudit(asActor("Système"), "Statut Release", id, `→ ${status}`);
       },
 
@@ -1097,6 +1370,18 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       addCampaign: (c, cloneFrom) => {
         const id = `c-${Date.now()}`;
         setCampaigns((prev) => [...prev, { ...c, id }]);
+        const projectBackend = backendIdOf(c.projectId);
+        if (projectBackend) {
+          attemptBackend("Création campagne", () =>
+            createCampaign({
+              project_id: projectBackend,
+              name: c.name,
+              status: toBackendCampaignStatus(c.status),
+              start_date: c.startDate,
+              end_date: c.endDate,
+            }),
+          );
+        }
         if (cloneFrom) {
           setTests((prev) => {
             const source = prev.filter((t) => t.campaignId === cloneFrom);
@@ -1124,11 +1409,25 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         return id;
       },
       replaceCampaigns: (nextCampaigns) => setCampaigns(nextCampaigns),
-      updateCampaign: (id, patch) =>
-        setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c))),
+      updateCampaign: (id, patch) => {
+        setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+        const idBackend = backendIdOf(id);
+        if (idBackend) {
+          attemptBackend("Mise à jour campagne", () =>
+            updateCampaignById(idBackend, {
+              name: patch.name,
+              status: toBackendCampaignStatus(patch.status),
+              start_date: patch.startDate,
+              end_date: patch.endDate,
+            }),
+          );
+        }
+      },
       deleteCampaign: (id) => {
         setCampaigns((prev) => prev.filter((c) => c.id !== id));
         setTests((prev) => prev.filter((t) => t.campaignId !== id));
+        const idBackend = backendIdOf(id);
+        if (idBackend) attemptBackend("Suppression campagne", () => deleteCampaignById(idBackend));
         pushAudit(asActor("Système"), "Campagne supprimée", id, "—");
       },
       addTestCase: (t) => {
@@ -1139,22 +1438,70 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
             ...t,
             id,
             verdict: t.verdict ?? ("NOT_RUN" as Verdict),
-            observed: "",
-            comment: "",
+            observed: t.observed ?? "",
+            comment: t.comment ?? "",
             evidence: [],
           },
         ]);
+        const campaignBackend = backendIdOf(t.campaignId);
+        const featureBackend = backendIdOf(t.featureId);
+        if (campaignBackend && featureBackend) {
+          attemptBackend("Création cas de test", () =>
+            createTestCase({
+              campaign_id: campaignBackend,
+              feature_id: featureBackend,
+              name: t.name,
+              description: t.preconditions.join(", "),
+              steps: t.steps,
+              expected_result: t.expected.join(" · "),
+              priority: toBackendPriority(t.criticality),
+              type: t.type,
+            }),
+          );
+        }
         pushAudit(asActor(t.tester ?? "Système"), "Cas de test créé", id, t.name);
         return id;
       },
       updateTest: (id, patch) => {
         setTests((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-        if (patch.verdict) {
+        const test = tests.find((t) => t.id === id);
+        if (patch.verdict && test) {
+          const testBackend = backendIdOf(test.id);
+          const campaignBackend = backendIdOf(test.campaignId);
+          if (testBackend && campaignBackend) {
+            const payload = {
+              result: toBackendVerdict(patch.verdict),
+              notes: patch.comment,
+              actual_behavior: patch.observed,
+            };
+            const execBackend = backendIdOf(test.executionId);
+            if (execBackend) {
+              attemptBackend("Verdict enregistré", () => updateExecutionById(execBackend, payload));
+            } else {
+              attemptBackend("Verdict enregistré", () =>
+                createExecution({
+                  test_case_id: testBackend,
+                  campaign_id: campaignBackend,
+                  result: payload.result,
+                  notes: payload.notes,
+                  actual_behavior: payload.actual_behavior,
+                }).then((exec) =>
+                  setTests((prev) =>
+                    prev.map((t) =>
+                      t.id === id ? { ...t, executionId: String(exec.id) } : t,
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
           pushAudit(asActor(patch.tester ?? "Système"), "Verdict enregistré", id, patch.verdict);
         }
       },
       deleteTest: (id) => {
         setTests((prev) => prev.filter((t) => t.id !== id));
+        const idBackend = backendIdOf(id);
+        if (idBackend) attemptBackend("Suppression cas de test", () => deleteTestCaseById(idBackend));
         pushAudit(asActor("Système"), "Cas de test supprimé", id, "—");
       },
 
@@ -1162,6 +1509,21 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       addDefect: (d) => {
         const id = `ANO-${2852 + defects.length}`;
         setDefects((prev) => [...prev, { ...d, id }]);
+        const featureBackend = backendIdOf(d.featureId);
+        const campaign = d.campaignId
+          ? campaigns.find((c) => c.id === d.campaignId)
+          : campaigns.find((c) => c.productId === d.productId);
+        const campaignBackend = backendIdOf(campaign?.id);
+        if (featureBackend && campaignBackend) {
+          attemptBackend("Création anomalie", () =>
+            createAnomaly({
+              feature_id: featureBackend,
+              campaign_id: campaignBackend,
+              description: d.description ? `${d.title}\n\n${d.description}` : d.title,
+              correction_due_date: d.targetDate,
+            }),
+          );
+        }
         pushAudit(asActor(d.reporter), "Anomalie créée", id, d.title);
         return id;
       },
@@ -1178,32 +1540,99 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
           }
           return prev.map((x) => (x.id === id ? { ...x, ...patch } : x));
         });
+        const idBackend = backendIdOf(id);
+        if (idBackend) {
+          attemptBackend("Mise à jour anomalie", () =>
+            updateAnomalyById(idBackend, {
+              description: patch.description,
+              status: patch.status ? toBackendDefectStatus(patch.status) : undefined,
+              correction_due_date: patch.targetDate,
+            }),
+          );
+        }
       },
       addWatchPoint: (w) => {
         const id = `WP-${String(watchPoints.length + 1).padStart(2, "0")}-${Date.now() % 1000}`;
         setWatchPoints((prev) => [{ ...w, id, createdAt: today() }, ...prev]);
+        const project = projects.find((p) => p.productId === w.productId);
+        const projectBackend = backendIdOf(project?.id);
+        if (projectBackend) {
+          attemptBackend("Création point à surveiller", () =>
+            createWatchPoint({
+              project_id: projectBackend,
+              feature_id: backendIdOf(w.featureId),
+              title: w.title,
+              description: w.description,
+              criticality: toBackendWatchCriticality(w.level),
+              status: toBackendWatchStatus(w.status),
+            }),
+          );
+        }
         pushAudit(asActor(w.owner), "Point à surveiller créé", id, w.title);
       },
       replaceWatchPoints: (nextWatchPoints) => setWatchPoints(nextWatchPoints),
-      updateWatchPoint: (id, patch) =>
-        setWatchPoints((prev) => prev.map((w) => (w.id === id ? { ...w, ...patch } : w))),
+      updateWatchPoint: (id, patch) => {
+        setWatchPoints((prev) => prev.map((w) => (w.id === id ? { ...w, ...patch } : w)));
+        const idBackend = backendIdOf(id);
+        if (idBackend) {
+          attemptBackend("Mise à jour point à surveiller", () =>
+            updateWatchPointById(idBackend, {
+              title: patch.title,
+              description: patch.description,
+              criticality: toBackendWatchCriticality(patch.level),
+              status: toBackendWatchStatus(patch.status),
+            }),
+          );
+        }
+      },
       deleteDefect: (id) => {
         setDefects((prev) => prev.filter((d) => d.id !== id));
+        const idBackend = backendIdOf(id);
+        if (idBackend) attemptBackend("Suppression anomalie", () => deleteAnomalyById(idBackend));
         pushAudit(asActor("Système"), "Anomalie supprimée", id, "—");
       },
       deleteWatchPoint: (id) => {
         setWatchPoints((prev) => prev.filter((w) => w.id !== id));
+        const idBackend = backendIdOf(id);
+        if (idBackend) attemptBackend("Suppression point à surveiller", () => deleteWatchPointById(idBackend));
         pushAudit(asActor("Système"), "Point à surveiller supprimé", id, "—");
       },
 
       /* Exigences & Go Live ------------------------------------------  */
-      addRequirement: (r) =>
-        setRequirements((prev) => [...prev, { ...r, id: `REQ-${100 + prev.length + 1}` }]),
+      addRequirement: (r) => {
+        const id = `REQ-${100 + requirements.length + 1}`;
+        setRequirements((prev) => [...prev, { ...r, id }]);
+        const featureBackend = backendIdOf(r.featureIds[0]);
+        if (featureBackend) {
+          attemptBackend("Création exigence", () =>
+            createRequirement({
+              feature_id: featureBackend,
+              title: r.title,
+              description: r.description,
+              status: toBackendRequirementStatus(r.status),
+            }),
+          );
+        }
+        return id;
+      },
       replaceRequirements: (nextRequirements) => setRequirements(nextRequirements),
-      updateRequirement: (id, patch) =>
-        setRequirements((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r))),
+      updateRequirement: (id, patch) => {
+        setRequirements((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+        const idBackend = backendIdOf(id);
+        if (idBackend) {
+          attemptBackend("Mise à jour exigence", () =>
+            updateRequirementById(idBackend, {
+              title: patch.title,
+              description: patch.description,
+              status: toBackendRequirementStatus(patch.status),
+            }),
+          );
+        }
+      },
       deleteRequirement: (id) => {
         setRequirements((prev) => prev.filter((r) => r.id !== id));
+        const idBackend = backendIdOf(id);
+        if (idBackend) attemptBackend("Suppression exigence", () => deleteRequirementById(idBackend));
         pushAudit(asActor("Système"), "Exigence supprimée", id, "—");
       },
       toggleChecklistItem: (releaseId, itemId) => {
@@ -1435,6 +1864,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
     rules,
     users,
     currentUser,
+    backendStatus,
     productDocuments,
     projectDocuments,
     campaignDocuments,
