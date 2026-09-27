@@ -267,11 +267,14 @@ export function reconcileSessionFromMe(me: BackendUser): void {
   const session = loadSession();
   if (!session) return;
   const freshUser = mapBackendUser(me) as SessionUser;
+  const sameRoles =
+    (session.roles?.length ?? 0) === (freshUser.roles?.length ?? 0) &&
+    (session.roles ?? []).every((r) => freshUser.roles?.includes(r));
   if (
     session.role !== freshUser.role ||
     session.name !== freshUser.name ||
     session.email !== freshUser.email ||
-    (session.roles?.length ?? 0) !== (freshUser.roles?.length ?? 0)
+    !sameRoles
   ) {
     saveSession(freshUser);
     currentUserSetter?.(freshUser);
