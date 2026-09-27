@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/node';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { execSync } from 'node:child_process';
 import dotenv from 'dotenv';
 import http from 'http';
 import swaggerUi from 'swagger-ui-express';
@@ -20,7 +21,15 @@ import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
-console.log(`[DHI] boot ${new Date().toISOString()} commit=7bf5f28`);
+function bootCommit() {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return (process.env.RENDER_GIT_COMMIT || 'unknown').slice(0, 7);
+  }
+}
+
+console.log(`[DHI] boot ${new Date().toISOString()} commit=${bootCommit()}`);
 
 const app = express();
 app.set('trust proxy', 1);
