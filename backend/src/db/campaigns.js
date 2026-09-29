@@ -96,8 +96,8 @@ export async function create(data, client = null) {
   if (data.test_lead_ids && data.test_lead_ids.length > 0) {
     await setTestLeads(campaign.id, data.test_lead_ids, c);
   }
-  campaign.test_leads = data.test_lead_ids || [];
-  return campaign;
+  const [withLeads] = await attachTestLeadIds([campaign], c);
+  return withLeads;
 }
 
 export async function update(id, data, client = null) {
@@ -130,7 +130,10 @@ export async function update(id, data, client = null) {
 export async function archiveByProject(projectId, client = null) {
   const c = client || pool;
   const result = await c.query(
-    `UPDATE campaigns SET status = 'archived' WHERE project_id = $1 AND status != 'archived' RETURNING id`,
+    `UPDATE campaigns
+        SET status_before_archive = status, status = 'archived'
+      WHERE project_id = $1 AND status != 'archived'
+      RETURNING id`,
     [projectId]
   );
   return result.rows.map(r => r.id);
@@ -138,8 +141,14 @@ export async function archiveByProject(projectId, client = null) {
 
 export async function unarchiveByProject(projectId, client = null) {
   const c = client || pool;
+  // Restaure le statut réel de la campagne, et non un 'planning' générique :
+  // une campagne 'completed' doit le redevenir après un aller-retour.
   const result = await c.query(
-    `UPDATE campaigns SET status = 'planning' WHERE project_id = $1 AND status = 'archived' RETURNING id`,
+    `UPDATE campaigns
+        SET status = COALESCE(status_before_archive, 'planning'::campaign_status),
+            status_before_archive = NULL
+      WHERE project_id = $1 AND status = 'archived'
+      RETURNING id`,
     [projectId]
   );
   return result.rows.map(r => r.id);
@@ -195,16 +204,24 @@ async function attachTestLeadIds(rows, client) {
   if (!rows || rows.length === 0) return rows;
   const ids = rows.map(r => r.id);
   const result = await client.query(
-    'SELECT campaign_id, user_id FROM campaign_test_leads WHERE campaign_id = ANY($1) ORDER BY campaign_id, id',
+    `SELECT ctl.campaign_id, ctl.user_id, u.first_name, u.last_name
+     FROM campaign_test_leads ctl
+     LEFT JOIN users u ON u.id = ctl.user_id
+     WHERE ctl.campaign_id = ANY($1) ORDER BY ctl.campaign_id, ctl.id`,
     [ids]
   );
+  const nameOf = (u) => [u.first_name, u.last_name].filter(Boolean).join(' ');
   const map = {};
+  const nameMap = {};
   for (const row of result.rows) {
     if (!map[row.campaign_id]) map[row.campaign_id] = [];
     map[row.campaign_id].push(row.user_id);
+    if (!nameMap[row.campaign_id]) nameMap[row.campaign_id] = [];
+    nameMap[row.campaign_id].push(nameOf(row));
   }
   for (const row of rows) {
     row.test_leads = map[row.id] || [];
+    row.test_lead_names = nameMap[row.id] || [];
   }
   return rows;
 }

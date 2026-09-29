@@ -104,6 +104,7 @@ function CreateCampaignPage() {
         endDate: form.endDate || form.startDate,
         testers: [...form.testers],
         developers: [...form.developers],
+        testLeads: [form.owner],
       };
     if (!localStorage.getItem("token") || !/^\d+$/.test(form.projectId)) {
       const id = addCampaign(localCampaign, form.clone ? form.cloneFrom : undefined);
@@ -123,10 +124,11 @@ function CreateCampaignPage() {
           .filter((n): n is number => n !== undefined);
       const testers = toNumericIds(form.testers);
       const developers = toNumericIds(form.developers);
+      const testLeadIds = toNumericIds(new Set([form.owner]));
       const organizationMode = form.type === "Recette" || form.type === "Régression" ? "scenario" : form.type === "Sécurité" || form.type === "Performance" ? "combination" : "exploratory";
       const response = await api<{ campaign: BackendCampaign }>("/campaigns", {
         method: "POST",
-        body: JSON.stringify({ project_id: Number(form.projectId), name: localCampaign.name, objective: `Campagne ${form.type} ${form.version}`, organization_mode: organizationMode, start_date: localCampaign.startDate, end_date: localCampaign.endDate, testers, developers }),
+        body: JSON.stringify({ project_id: Number(form.projectId), name: localCampaign.name, objective: `Campagne ${form.type} ${form.version}`, organization_mode: organizationMode, start_date: localCampaign.startDate, end_date: localCampaign.endDate, test_lead_ids: testLeadIds, testers, developers }),
       });
       const backendCampaign = mapBackendCampaign(response.campaign, projects.find((project) => project.id === form.projectId) ? { id: Number(form.projectId), product_id: Number(form.productId), name: "" } : undefined);
       replaceCampaigns([...campaigns, { ...backendCampaign, ...localCampaign, id: String(response.campaign.id) }]);

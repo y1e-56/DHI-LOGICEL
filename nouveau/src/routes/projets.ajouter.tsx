@@ -90,9 +90,12 @@ function CreateProjectPage() {
       return;
     }
     try {
-      const lead = users.find((user) => user.name === form.qaLead || user.name === form.manager);
-      const leadId = lead ? Number(lead.id) : NaN;
-      const testLeadIds = Number.isInteger(leadId) && leadId > 0 ? [leadId] : [];
+      const testLeadIds = [form.manager, form.qaLead]
+        .map((name) => users.find((user) => user.name === name)?.id)
+        .filter((id): id is string => !!id)
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+        .filter((id, index, all) => all.indexOf(id) === index);
       const response = await api<{ project: BackendProject }>("/projects", {
         method: "POST",
         body: JSON.stringify({

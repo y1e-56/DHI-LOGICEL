@@ -109,6 +109,8 @@ export interface Product {
   score: number;
   breakdown: ScoreBreakdown;
   lastUpdate: string;
+  /** Produit archive : reste consultable mais exclu des vues par defaut. */
+  isArchived?: boolean;
 }
 
 export interface Feature {
@@ -118,6 +120,8 @@ export interface Feature {
   description: string;
   criticality: Criticality;
   coverage: Partial<Record<TestType, boolean>>;
+  /** Code de référence du CDC (ex. FCT-01), stocké en base dans features.module. */
+  module?: string | undefined;
   /** Document source de référence (ex. CDC produit) : "Basé sur <document>". */
   sourceDocId?: string | undefined;
 }
@@ -138,8 +142,14 @@ export interface Campaign {
   endDate: string;
   testers: string[];
   developers?: string[] | undefined;
+  /** Chefs de test affectés à la campagne. */
+  testLeads?: string[] | undefined;
   /** Fonctionnalités du registre importées/rattachées explicitement à cette campagne. */
   featureIds?: string[] | undefined;
+  /** Campagne mise en sourdine par l'archivage de son projet. */
+  isArchived?: boolean;
+  /** Statut conserve lors de l'archivage, pour une restauration fidele. */
+  statusBeforeArchive?: CampaignStatus;
 }
 
 export interface TestCase {
@@ -199,6 +209,10 @@ export interface Project {
   manager: string;
   qaLead: string;
   progress: number;
+  /** Projet archive : reste consultable mais exclu des vues par defaut. */
+  isArchived?: boolean;
+  /** Etat archive d'origine, conserve quand l'archivage vient du produit parent. */
+  isArchivedBeforeProduct?: boolean;
 }
 
 export interface Release {

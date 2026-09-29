@@ -25,7 +25,14 @@ import {
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
 import { useVisibleProducts } from "@/lib/use-scope";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
-import { api, type BackendRequirement } from "@/lib/api";
+import {
+  api,
+  backendIdOf,
+  mapBackendRequirement,
+  toBackendRequirementPriority,
+  toBackendRequirementStatus,
+  type BackendRequirement,
+} from "@/lib/api";
 
 export const Route = createFileRoute("/exigences/$requirementId/modifier")({
   loader: ({ params }) => {
@@ -116,9 +123,20 @@ function EditRequirementPage() {
     try {
       const response = await api<BackendRequirement>(`/requirements/${requirement.id}`, {
         method: "PUT",
-        body: JSON.stringify({ title: patch.title, description: patch.description, status: ({ brouillon: "proposed", validee: "validated", couverte: "approved" } as const)[patch.status] }),
+        body: JSON.stringify({
+          title: patch.title,
+          description: patch.description,
+          status: toBackendRequirementStatus(patch.status),
+          priority: toBackendRequirementPriority(patch.priority),
+          product_id: backendIdOf(patch.productId) ?? null,
+          feature_ids: patch.featureIds
+            .map((id) => backendIdOf(id))
+            .filter((id): id is number => id != null),
+        }),
       });
-      replaceRequirements(requirements.map((item) => item.id === requirement.id ? { ...item, ...patch, ...({ id: String(response.id), featureIds: [String(response.feature_id)] }) } : item));
+      replaceRequirements(
+        requirements.map((item) => (item.id === requirement.id ? mapBackendRequirement(response) : item)),
+      );
       toast.success(t("pages.requirements.updated").replace("{id}", requirement.id));
       void navigate({ to: "/exigences" });
     } catch (error) {

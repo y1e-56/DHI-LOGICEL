@@ -69,7 +69,12 @@ export function campaignVisibleTo(
   const product = products.find((p) => p.id === campaign.productId);
   if (product && productVisibleTo(product, user)) return true;
   const name = user.name;
-  return campaign.owner === name || (Array.isArray(campaign.testers) && campaign.testers.includes(name));
+  return (
+    campaign.owner === name ||
+    (Array.isArray(campaign.testers) && campaign.testers.includes(name)) ||
+    (Array.isArray(campaign.developers) && campaign.developers.includes(name)) ||
+    (Array.isArray(campaign.testLeads) && campaign.testLeads.includes(name))
+  );
 }
 
 export function visibleProducts(products: Product[], user: SessionUser | null): Product[] {

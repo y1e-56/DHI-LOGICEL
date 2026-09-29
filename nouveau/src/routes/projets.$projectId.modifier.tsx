@@ -94,10 +94,15 @@ function EditProjectPage() {
       return;
     }
     try {
-      const lead = users.find((user) => user.name === form.qaLead || user.name === form.manager);
+      const testLeadIds = [form.manager, form.qaLead]
+        .map((name) => users.find((user) => user.name === name)?.id)
+        .filter((id): id is string => !!id)
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+        .filter((id, index, all) => all.indexOf(id) === index);
       const response = await api<{ project: BackendProject }>(`/projects/${project.id}`, {
         method: "PUT",
-        body: JSON.stringify({ name: form.name.trim(), description: form.objective, start_date: form.startDate || undefined, end_date: form.endDate || undefined, product_id: Number(form.productId), test_lead_ids: lead ? [Number(lead.id)] : [] }),
+        body: JSON.stringify({ name: form.name.trim(), description: form.objective, start_date: form.startDate || undefined, end_date: form.endDate || undefined, product_id: Number(form.productId), test_lead_ids: testLeadIds }),
       });
       replaceProjects(projects.map((item) => item.id === project.id ? { ...mapBackendProject(response.project), ...form, id: project.id } : item));
       toast.success(`${t("pages.projects.updated")} « ${form.name.trim()} »`);

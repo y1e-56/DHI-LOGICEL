@@ -86,29 +86,3 @@ export function campaignTabs(campaignId: string): AppShellTab[] {
     },
   ];
 }
-
-export const SEARCH_GROUPS: TranslationKey[] = [
-  "nav.pilotage",
-  "nav.qualite",
-  "nav.execution",
-  "nav.decision",
-  "nav.systeme",
-];
-
-export const SEARCH_PAGES: { to: string; label: TranslationKey; group: TranslationKey }[] = [
-  { to: "/", label: "nav.dashboard", group: "nav.pilotage" },
-  { to: "/alertes", label: "nav.alertes", group: "nav.pilotage" },
-  { to: "/notifications", label: "nav.notifications", group: "nav.pilotage" },
-  { to: "/produits", label: "nav.produits", group: "nav.qualite" },
-  { to: "/projets", label: "nav.projets", group: "nav.qualite" },
-  { to: "/fonctionnalites", label: "nav.fonctionnalites", group: "nav.qualite" },
-  { to: "/exigences", label: "nav.exigences", group: "nav.qualite" },
-  { to: "/couverture", label: "nav.couverture", group: "nav.qualite" },
-  { to: "/campagnes", label: "nav.campagnes", group: "nav.execution" },
-  { to: "/go-live", label: "nav.go_live", group: "nav.decision" },
-  { to: "/points-a-surveiller", label: "nav.points_surveiller", group: "nav.decision" },
-  { to: "/anomalies", label: "nav.anomalies", group: "nav.systeme" },
-  { to: "/referentiels", label: "nav.referentiels", group: "nav.systeme" },
-  { to: "/administration", label: "nav.administration", group: "nav.systeme" },
-  { to: "/audit", label: "nav.audit", group: "nav.systeme" },
-];
