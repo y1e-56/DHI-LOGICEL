@@ -15,7 +15,9 @@ const requireEvidenceReader = requireRole('chef_testeur', 'quality_manager', 'qa
 const upload = multer({ dest: 'uploads/evidence/' });
 
 const createSchema = z.object({
-  entity_type: z.enum(['test_execution','anomaly','requirement','feature','campaign','product','project']),
+  // `go_live_decision` est dans l'enum entity_type depuis la migration 026 :
+  // sans lui, impossible de rattacher une capture d'écran à une décision Go/No-Go.
+  entity_type: z.enum(['test_execution','anomaly','requirement','feature','campaign','product','project','go_live_decision']),
   entity_id: z.number().int().positive(),
   file_path: z.string().optional(),
   file_name: z.string().optional(),

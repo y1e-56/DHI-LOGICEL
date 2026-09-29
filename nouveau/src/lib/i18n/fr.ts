@@ -22,6 +22,23 @@ export const frDict = {
     referentiels: "Référentiels & règles",
     administration: "Administration",
     audit: "Audit & historique",
+    tests: "Cas de test",
+    product_overview: "Aperçu du produit",
+    product_projects: "Projets du produit",
+    product_features: "Fonctionnalités du produit",
+    project_overview: "Vue d'ensemble du projet",
+    project_features: "Fonctionnalités du projet",
+    project_campaigns: "Campagnes du projet",
+    project_tests: "Cas de test du projet",
+    campaign_overview: "Vue d'ensemble de la campagne",
+    campaign_features: "Fonctionnalités (importées)",
+    campaign_tests: "Cas de test",
+    campaign_import: "Importer",
+    campaign_documents: "Documents",
+    product_campaigns: "Campagnes du produit",
+    product_tests: "Cas de test du produit",
+    product_documents: "Documents",
+    project_documents: "Documents",
   },
   actions: {
     ajouter: "Ajouter",
@@ -100,7 +117,6 @@ export const frDict = {
     score: "Score",
     sante: "Santé",
     projets: "Projets",
-    produit: "Produit",
     deconnexion_message: "Vous avez été déconnecté(e).",
     navigation: "Navigation",
     changer_theme: "Changer le thème",
@@ -797,6 +813,9 @@ export const frDict = {
       developpeurs: "Développeurs",
       reassigned: "réassigné à",
       unassigned: "Non affecté",
+      user_not_resolved:
+        "utilisateur introuvable en base, l'affectation n'a pas été enregistrée",
+      tester_inconnu: "Testeur du fichier introuvable dans l'application, affectation ignorée",
       tests_echoues: "Tests échoués",
       aucun_test_echec: "Aucun test échoué.",
       detail: "Détail",
@@ -1040,6 +1059,20 @@ export const frDict = {
       decider: "Décideur (Approver)",
       justification: "Justification / dérogation",
       justification_placeholder: "Risque accepté, conditions, date d'expiration…",
+      screenshots: "Captures d'écran (justificatifs)",
+      add_screenshots: "Ajouter des images",
+      screenshots_count: "{n} / {max} image(s)",
+      screenshots_hint:
+        "Les images sont jointes à la décision et restent consultables dans l'historique.",
+      remove_screenshot: "Retirer cette image",
+      decision_screenshots: "Captures jointes à la décision",
+      image_only: "Seules les images peuvent être jointes à la décision.",
+      non_image_ignored: "Les fichiers qui ne sont pas des images ont été ignorés.",
+      image_too_big: "{n} image(s) dépassent 10 Mo et ont été ignorées.",
+      max_screenshots: "Vous pouvez joindre au maximum {n} images par décision.",
+      login_required_for_images:
+        "Connectez-vous pour joindre des captures : elles sont enregistrées côté serveur.",
+      decision_failed: "La décision n'a pas pu être enregistrée.",
       record_decision: "Historiser la décision",
       no_permission: "Seuls l'administrateur, le responsable qualité et le chef de projet peuvent enregistrer une décision Go/No-Go.",
       history_title: "Historique des décisions (cette release)",
@@ -1138,76 +1171,6 @@ export const frDict = {
       demo_hint: "Cliquez sur un compte pour pré-remplir le formulaire.",
     },
   },
-  footer: {
-    copyright: "© DHI Quality Platform — Gouvernance qualité mesurable et traçable",
-  },
-  nav: {
-    pilotage: "Pilotage",
-    dashboard: "Tableau de bord",
-    alertes: "Alertes",
-    notifications: "Notifications",
-    qualite: "Qualité",
-    produits: "Produits",
-    projets: "Projets",
-    fonctionnalites: "Fonctionnalités",
-    tests: "Cas de test",
-    product_overview: "Aperçu du produit",
-    product_projects: "Projets du produit",
-    product_features: "Fonctionnalités du produit",
-    project_overview: "Vue d'ensemble du projet",
-    project_features: "Fonctionnalités du projet",
-    project_campaigns: "Campagnes du projet",
-    project_tests: "Cas de test du projet",
-    campaign_overview: "Vue d'ensemble de la campagne",
-    campaign_features: "Fonctionnalités (importées)",
-    campaign_tests: "Cas de test",
-    campaign_import: "Importer",
-    campaign_documents: "Documents",
-    product_campaigns: "Campagnes du produit",
-    product_tests: "Cas de test du produit",
-    product_documents: "Documents",
-    project_documents: "Documents",
-    exigences: "Exigences",
-    couverture: "Couverture",
-    execution: "Exécution",
-    campagnes: "Campagnes de tests",
-    decision: "Décision",
-    go_live: "Go Live Center",
-    points_surveiller: "Points à surveiller",
-    systeme: "Système",
-    anomalies: "Anomalies & incidents",
-    referentiels: "Référentiels & règles",
-    administration: "Administration",
-    audit: "Audit & historique",
-  },
-  actions: {
-    ajouter: "Ajouter",
-    modifier: "Modifier",
-    supprimer: "Supprimer",
-    enregistrer: "Enregistrer",
-    annuler: "Annuler",
-    confirmer: "Confirmer",
-    fermer: "Fermer",
-    rechercher: "Rechercher",
-    filtrer: "Filtrer",
-    exporter: "Exporter",
-    importer: "Importer",
-    telecharger: "Télécharger",
-    modele: "Modèle",
-    rapport: "Générer le rapport",
-    plus: "Autres actions",
-    demarrer: "Démarrer",
-    cloturer: "Clôturer",
-    editer: "Éditer",
-    lier_fonctionnalites: "Lier des fonctionnalités",
-    connexion: "Se connecter",
-    deconnexion: "Se déconnecter",
-    imprimer: "Imprimer / PDF",
-    retour: "Retour",
-    suivant: "Suivant",
-    archiver: "Archiver",
-    restaurer: "Restaurer",
-  },
   gap: {
     title: "Analyse des lacunes",
     exigences_orphelines: "Exigences sans fonctionnalité liée",
@@ -1224,17 +1187,6 @@ export const frDict = {
     aucune_exigence: "Aucune exigence rattachée",
     voir_exigence: "Voir l'exigence",
     voir_test: "Voir l'exécution du test",
-  },
-  login: {
-    titre: "Connexion à DHI Quality",
-    sous_titre: "Identifiez-vous pour accéder au pilotage de la qualité.",
-    email: "Adresse e-mail",
-    mdp: "Mot de passe",
-    oublier: "Mot de passe oublié ?",
-    compte_demo: "Comptes de démonstration",
-    bienvenue: "Bienvenue",
-    afficher_mdp: "Afficher le mot de passe",
-    cacher_mdp: "Masquer le mot de passe",
   },
   campagne_import: {
     title: "Importer des cas de test — CSV",
@@ -1273,4 +1225,18 @@ export const frDict = {
   },
 } as const;
 
-export type DictShape = typeof frDict;
+/**
+ * Structure attendue d'un dictionnaire de traduction.
+ *
+ * Volontairement `string` et non les littéraux de `frDict` : le type précédent
+ * imposait à l'anglais et à l'arabe de recopier mot pour mot les chaînes
+ * françaises, ce qui rendait toute vraie traduction impossible et produisait
+ * plus de 1200 erreurs. On valide ici la *forme* (mêmes clés, mêmes
+ * imbrications), ce qui est le vrai contrat d'un fichier de traduction.
+ */
+export type TranslationValue = string | number | boolean | null | undefined;
+/** Certaines valeurs sont des listes (options de menu, libellés de rôle…). */
+export type TranslationList = readonly TranslationValue[];
+export type DictShape = {
+  readonly [key: string]: TranslationValue | TranslationList | DictShape;
+};

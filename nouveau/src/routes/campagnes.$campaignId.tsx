@@ -279,19 +279,31 @@ function CampaignTestsTable({
   locked: boolean;
 }) {
   const { t } = useI18n();
-  const { campaigns, updateTest, tests } = useStore();
+  const { campaigns, updateTest, users } = useStore();
   const campaign = campaigns.find((c) => c.id === campaignId);
   const assignees = campaign?.testers ?? [];
 
-  const reassign = (testId: string, tester: string) => {
-    const test = tests.find((x) => x.id === testId);
-    const next = tester === "__none__" ? undefined : tester;
-    updateTest(testId, { tester: next });
-    toast.success(
-      `${testId} ${t("pages.campaign_detail.reassigned")} ${
-        next || t("pages.campaign_detail.unassigned")
-      }.`,
-    );
+  const reassign = (testId: string, testerName: string) => {
+    if (testerName === "__none__") {
+      // Retirer l'affectation : `assignedTo: null` est distingue de l'absence de cle
+      // côté store, donc le retrait est bien envoye au backend.
+      updateTest(testId, { tester: undefined, assignedTo: null });
+      toast.success(
+        `${testId} ${t("pages.campaign_detail.reassigned")} ${
+          t("pages.campaign_detail.unassigned")
+        }.`,
+      );
+      return;
+    }
+    // La colonne backend est une reference users(id) : on resout le nom en id.
+    const user = users.find((u) => u.name === testerName);
+    const userId = user ? Number(user.id) : Number.NaN;
+    if (!user || !Number.isInteger(userId) || userId <= 0) {
+      toast.error(`${testerName} : ${t("pages.campaign_detail.user_not_resolved")}`);
+      return;
+    }
+    updateTest(testId, { tester: testerName, assignedTo: userId });
+    toast.success(`${testId} ${t("pages.campaign_detail.reassigned")} ${testerName}.`);
   };
 
   return (
@@ -727,10 +739,6 @@ function CampaignDetail() {
   const project = projects.find((p) => p.id === campaign.projectId);
 
   const st = campaignStats(tests, campaign.id);
-  const recentExecuted = st.list
-    .filter((test) => test.executedAt)
-    .sort((a, b) => (Date.parse(b.executedAt ?? "") || 0) - (Date.parse(a.executedAt ?? "") || 0))
-    .slice(0, 10);
   const failedTests = st.list.filter((t) => t.verdict === "FAIL");
   const campaignFeatures = features.filter((f) => f.productId === campaign.productId);
 
@@ -772,7 +780,7 @@ function CampaignDetail() {
         <FailedTestsPanel failedTests={failedTests} />
       </div>
       <CampaignTestsTable
-        list={recentExecuted}
+        list={st.list}
         campaignId={campaign.id}
         onDelete={(t) => setToDeleteTest(t)}
         locked={campaign.status === "terminee"}

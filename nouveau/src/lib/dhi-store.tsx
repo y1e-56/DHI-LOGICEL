@@ -94,6 +94,7 @@ import {
   getGoLiveChecklist,
   getGoLiveDecisions,
   createGoLiveDecision,
+  uploadEvidence,
   updateGoLiveChecklistItem,
   createProduct,
   updateProductById,
@@ -213,15 +214,12 @@ const makeDefaultChecklist = (): Record<string, GoLiveChecklistItem[]> => {
 };
 
 export function loadSnapshot(): PersistedSnapshot | null {
-  console.log("[DHI] loadSnapshot called, window=", typeof window);
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    console.log("[DHI] loadSnapshot localStorage raw=", raw ? raw.substring(0, 80) + "..." : "null");
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedSnapshot;
     if (!parsed || typeof parsed !== "object") return null;
-    console.log("[DHI] loadSnapshot OK, products=", parsed.products?.length);
     return parsed;
   } catch (e) {
     console.error("[DHI] loadSnapshot error:", e);
@@ -238,17 +236,33 @@ function saveSnapshot(snap: PersistedSnapshot) {
   }
 }
 
+/**
+ * Lecture de la session en localStorage.
+ *
+ * Appelée plusieurs dizaines de fois par rendu (une fois par entrée de menu
+ * via `hasAccessToPage`, plus `__root`), on évite de re-parser le JSON à
+ * chaque fois. La relecture des clés reste systématique : `api.ts` supprime
+ * le token sur un 401 sans passer par `saveSession`, un cache de la valeur
+ * deviendrait donc obsolète.
+ */
+let sessionCache: { raw: string; parsed: SessionUser } | null = null;
+
 export function loadSession(): SessionUser | null {
-  console.log("[DHI] loadSession called, window=", typeof window);
   if (typeof window !== "undefined") {
     try {
       if (!window.localStorage.getItem("token")) {
         window.localStorage.removeItem(SESSION_KEY);
+        sessionCache = null;
         return null;
       }
       const raw = window.localStorage.getItem(SESSION_KEY);
-      console.log("[DHI] loadSession localStorage raw=", raw ? raw.substring(0, 80) + "..." : "null");
-      if (raw) return JSON.parse(raw) as SessionUser;
+      if (raw) {
+        if (raw === sessionCache?.raw) return sessionCache.parsed;
+        const parsed = JSON.parse(raw) as SessionUser;
+        sessionCache = { raw, parsed };
+        return parsed;
+      }
+      sessionCache = null;
     } catch {
       /* ignore */
     }
@@ -258,8 +272,14 @@ export function loadSession(): SessionUser | null {
 
 function saveSession(user: SessionUser | null) {
   if (typeof window === "undefined") return;
-  if (user) window.localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-  else window.localStorage.removeItem(SESSION_KEY);
+  if (user) {
+    const raw = JSON.stringify(user);
+    window.localStorage.setItem(SESSION_KEY, raw);
+    sessionCache = { raw, parsed: user };
+  } else {
+    window.localStorage.removeItem(SESSION_KEY);
+    sessionCache = null;
+  }
 }
 
 let currentUserSetter: ((user: SessionUser | null) => void) | null = null;
@@ -409,12 +429,18 @@ interface Store {
   updateRequirement: (id: string, patch: Partial<Requirement>) => void;
   deleteRequirement: (id: string) => void;
   toggleChecklistItem: (releaseId: string, itemId: string) => void;
+  /**
+   * Enregistre une décision Go Live et rattache les captures d'écran fournies.
+   * Renvoie l'identifiant de la décision côté base, ou null si l'utilisateur
+   * n'est pas connecté (mode local) — les images ne sont alors pas conservées.
+   */
   addGoLiveDecision: (
     releaseId: string,
     verdict: GoLiveVerdict,
     decider: string,
     justification: string,
-  ) => void;
+    screenshots?: File[],
+  ) => Promise<number | null>;
 
   /*  2.8  Mutations : Alertes / Admin / Référentiel --------------------  */
   markAlertRead: (id: string) => void;
@@ -1630,6 +1656,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
               expected_result: t.expected.join(" · "),
               priority: toBackendPriority(t.criticality),
               type: t.type,
+              assigned_to: t.assignedTo ?? null,
             }),
           );
         }
@@ -1680,6 +1707,9 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
               ...(patch.steps !== undefined && { steps: patch.steps }),
               ...(patch.criticality !== undefined && { priority: toBackendPriority(patch.criticality) }),
               ...(patch.type !== undefined && { type: patch.type }),
+              // L'affectation est desormais persistee. `null` retire le testeur,
+              // l'absence de la cle laisse l'affectation existante intacte.
+              ...(patch.assignedTo !== undefined && { assigned_to: patch.assignedTo }),
             };
             if (Object.keys(patchData).length > 0) {
               attemptBackend("Mise à jour cas de test", () => updateTestCaseById(testBackend, patchData));
@@ -1855,15 +1885,20 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
           );
         }
       },
-      addGoLiveDecision: (releaseId, verdict, decider, justification) => {
+      addGoLiveDecision: async (releaseId, verdict, decider, justification, screenshots) => {
         const checklist = goLiveChecklist[releaseId] ?? [];
         const totalWeight = checklist.reduce((s, i) => s + i.weight, 0);
         const doneWeight = checklist.filter((i) => i.checked).reduce((s, i) => s + i.weight, 0);
         const completion = totalWeight ? Math.round((doneWeight / totalWeight) * 100) : 0;
         const release = releases.find((r) => r.id === releaseId);
+        const localId = `GL-${Date.now()}`;
+
+        // Optimiste : la décision apparaît immédiatement, l'id backend est
+        // complété dès que la réponse arrive.
         setGoLiveDecisions((prev) => [
           {
-            id: `GL-${Date.now()}`,
+            id: localId,
+            backendId: null,
             releaseId,
             verdict,
             date: today(),
@@ -1873,16 +1908,49 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
           },
           ...prev,
         ]);
+
+        let backendId: number | null = null;
         if (localStorage.getItem("token")) {
-          createGoLiveDecision({
-            release_ref: releaseId,
-            verdict,
-            decider,
-            justification,
-            checklist_completion: completion,
-          }).catch((error) =>
-            console.error("[DHI] Erreur enregistrement décision Go Live", error),
-          );
+          try {
+            const created = await createGoLiveDecision({
+              release_ref: releaseId,
+              verdict,
+              decider,
+              justification,
+              checklist_completion: completion,
+            });
+            backendId = typeof created?.id === "number" ? created.id : null;
+            setGoLiveDecisions((prev) =>
+              prev.map((d) => (d.id === localId ? { ...d, backendId } : d)),
+            );
+          } catch (error) {
+            console.error("[DHI] Erreur enregistrement décision Go Live", error);
+            // L'ajout était optimiste : sans annulation, la décision resterait
+            // visible dans l'historique alors que l'appel a échoué.
+            setGoLiveDecisions((prev) => prev.filter((d) => d.id !== localId));
+            throw error;
+          }
+
+          // Les captures sont rattachées à la décision en base : sans cet id,
+          // les images seraient orphelines et invisibles dans l'historique.
+          if (backendId && screenshots?.length) {
+            const results = await Promise.allSettled(
+              screenshots.map((file) =>
+                uploadEvidence(
+                  "go_live_decision",
+                  String(backendId),
+                  file,
+                  JSON.stringify({ name: file.name, type: "capture" }),
+                ),
+              ),
+            );
+            const failed = results.filter((r) => r.status === "rejected").length;
+            if (failed > 0) {
+              console.error(
+                `[DHI] ${failed} capture(s) Go Live non enregistrée(s) sur ${screenshots.length}`,
+              );
+            }
+          }
         }
         pushAudit(
           decider,
@@ -1890,6 +1958,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
           release ? `Release ${release.version}` : releaseId,
           `${verdict} — checklist ${completion} %`,
         );
+        return backendId;
       },
 
       /* Alertes / Admin / Référentiel --------------------------------  */

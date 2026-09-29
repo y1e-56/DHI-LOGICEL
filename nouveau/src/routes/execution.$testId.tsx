@@ -508,7 +508,9 @@ function ExecutionPage() {
       observed: current.observed,
       comment: current.comment,
       measuredValue: current.measuredValue || undefined,
-      tester: "Marie Martin",
+      // Qui a execute, pas qui est affecte : l'affectation vit dans `assignedTo`
+      // et ne doit pas etre overwritten par le fait d'avoir lance le test.
+      tester: currentUser?.name ?? "—",
       executedAt: now.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }),
       duration: test.duration ?? "4 min 10 sec",
     });

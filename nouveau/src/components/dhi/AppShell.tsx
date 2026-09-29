@@ -48,6 +48,7 @@ import { useStore } from "@/lib/dhi-store";
 import { hasAccessToPage, getDefaultDashboardForRole } from "@/lib/role-protection";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { useRealtimeNotifications } from "@/lib/use-realtime-notifications";
+import { cn } from "@/lib/utils";
 
 /* =========================================================
    2. TYPES
@@ -205,13 +206,35 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+/**
+ * Marque de l'application : une validation (« carte verte »).
+ *
+ * Le bras long est volontairement deux fois plus long que le bras court : la
+ * coche symetrique par defaut se lit comme une icone generique, l'allongement
+ * donne au glyphe une signature. Elle se place dans le badge sombre, donc
+ * visible des 16 px, et reprend le vert du score qualite.
+ */
+function BrandMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={cn("size-4", className)}>
+      <path
+        d="M6 12.5 L10 16.5 L18.5 6.5"
+        stroke="var(--success)"
+        strokeWidth={2.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function Brand() {
   const { t } = useI18n();
 
   return (
     <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
-      <div className="flex size-7 items-center justify-center rounded-md bg-sidebar-primary text-[11px] font-bold tracking-tight text-sidebar-primary-foreground">
-        QC
+      <div className="flex size-7 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+        <BrandMark />
       </div>
       <div className="min-w-0">
         <p className="truncate text-[13px] font-semibold leading-none text-foreground">

@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env["VITE_API_URL"] ?? "http://localhost:5000/api";
+export const API_BASE_URL = import.meta.env["VITE_API_URL"] ?? "http://localhost:5000/api";
 
 import type {
   AppNotification,
@@ -94,6 +94,11 @@ export type BackendTestCase = {
   expected_result?: string | null;
   priority?: string | null;
   test_type?: string | null;
+  /** Testeur affecte, reference users(id) — null si non affecte. */
+  assigned_to?: number | null;
+  /** Nom resolu par jointure cote backend : on ne le stocke pas en double. */
+  assigned_to_first_name?: string | null;
+  assigned_to_last_name?: string | null;
 };
 
 export type BackendTestExecution = {
@@ -207,7 +212,7 @@ export type BackendEvidence = {
 };
 
 export async function uploadEvidence(
-  entityType: "product" | "project" | "campaign" | "feature",
+  entityType: "product" | "project" | "campaign" | "feature" | "go_live_decision",
   entityId: string,
   file: File,
   description: string,
@@ -286,6 +291,13 @@ export function mapBackendTestCase(test: BackendTestCase, execution?: BackendTes
       : test.priority === "low"
         ? "basse"
         : "moyenne";
+  // L'affectation et l'execution sont deux informations distinctes :
+  // l'affectation dit QUI doit faire le test, l'execution dit QUI l'a fait.
+  // Ecraser l'une par l'autre faisait disparaitre toute repartition du travail.
+  const assignedName =
+    test.assigned_to_first_name && test.assigned_to_last_name
+      ? `${test.assigned_to_first_name} ${test.assigned_to_last_name}`
+      : undefined;
   return {
     id: String(test.id),
     campaignId: String(test.campaign_id),
@@ -299,7 +311,8 @@ export function mapBackendTestCase(test: BackendTestCase, execution?: BackendTes
     verdict,
     observed: execution?.actual_behavior ?? "",
     comment: execution?.notes ?? test.description ?? "",
-    tester: execution?.executed_by_name ?? undefined,
+    tester: assignedName ?? execution?.executed_by_name ?? undefined,
+    assignedTo: test.assigned_to ?? undefined,
     executedAt: execution?.execution_date,
     duration: execution?.duration_seconds ? `${execution.duration_seconds} s` : undefined,
     evidence: [],
@@ -531,6 +544,16 @@ export async function updateGoLiveChecklistItem(releaseRef: string, itemId: stri
 export async function getGoLiveDecisions(releaseRef?: string) {
   const query = releaseRef ? `?releaseRef=${encodeURIComponent(releaseRef)}` : "";
   return api<{ data: BackendGoLiveDecision[] }>(`/go-live/decisions${query}`);
+}
+
+/** Preuves (captures d'écran, images) rattachées à une décision Go Live. */
+export async function getEvidenceByEntity(
+  entityType: "go_live_decision" | "campaign" | "feature" | "product" | "project",
+  entityId: number,
+) {
+  return api<{ data: BackendEvidence[] }>(
+    `/evidence/by-entity/${encodeURIComponent(entityType)}/${entityId}`,
+  );
 }
 
 export async function createGoLiveDecision(payload: {
@@ -857,6 +880,7 @@ export async function createTestCase(payload: {
   steps_text?: string;
   priority?: string;
   type?: string;
+  assigned_to?: number | null;
 }) {
   const body: Record<string, unknown> = {
     campaign_id: payload.campaign_id,
@@ -866,13 +890,27 @@ export async function createTestCase(payload: {
     expected_result: payload.expected_result,
     priority: payload.priority,
     test_type: payload.type,
+    assigned_to: payload.assigned_to ?? null,
   };
   if (payload.steps) body["steps"] = payload.steps.join("\n");
   else if (payload.steps_text) body["steps"] = payload.steps_text;
   return api<BackendTestCase>("/test-cases", { method: "POST", body: JSON.stringify(body) });
 }
 
-export async function updateTestCaseById(id: number, patch: { name?: string; description?: string; expected_result?: string; steps?: string[]; steps_text?: string; priority?: string; type?: string }) {
+export async function updateTestCaseById(
+  id: number,
+  patch: {
+    name?: string;
+    description?: string;
+    expected_result?: string;
+    steps?: string[];
+    steps_text?: string;
+    priority?: string;
+    type?: string;
+    /** `null` retire le testeur affecte ; absent = ne pas toucher a l'affectation. */
+    assigned_to?: number | null;
+  },
+) {
   const body: Record<string, unknown> = {
     name: patch.name,
     description: patch.description,
@@ -880,6 +918,9 @@ export async function updateTestCaseById(id: number, patch: { name?: string; des
     priority: patch.priority,
     type: patch.type,
   };
+  // La cle n'est presente que si l'appelant l'a fournie : envoyer `undefined`
+  // la transformerait en `null` apres serialisation et effacerait l'affectation.
+  if (patch.assigned_to !== undefined) body["assigned_to"] = patch.assigned_to;
   if (patch.steps) body["steps"] = patch.steps.join("\n");
   else if (patch.steps_text) body["steps"] = patch.steps_text;
   return api<BackendTestCase>(`/test-cases/${id}`, { method: "PUT", body: JSON.stringify(body) });

@@ -47,7 +47,21 @@ export const Route = createFileRoute("/campagnes/$campaignId/importer")({
 function ImportTestsPage() {
   const { campaignId } = Route.useParams();
   const store = useStore();
-  const { campaigns, features, products, addTestCase } = store;
+  const { campaigns, features, products, addTestCase, users } = store;
+
+  /** Testeurs sélectionnables : comptes actifs de l'app avec un rôle de test. */
+  const testerOptions = useMemo(
+    () =>
+      users
+        .filter((u) => {
+          if (!u.active) return false;
+          const roles = u.roles ?? [u.role];
+          const id = Number(u.id);
+          return Number.isInteger(id) && id > 0 && roles.some((r) => r === "testeur" || r === "chef_testeur");
+        })
+        .map((u) => ({ id: u.id, name: u.name })),
+    [users],
+  );
   const { t } = useI18n();
   const navigate = useNavigate();
   const campaign = campaigns.find((c) => c.id === campaignId);
@@ -121,14 +135,21 @@ function ImportTestsPage() {
       return;
     }
     let created = 0;
+    let unassigned = 0;
     for (const row of validRows) {
+      // Résolution du nom de testeur issu du CSV vers un compte réel : sans id
+      // numérique, l'affectation ne peut pas être enregistrée.
+      const wanted = (row.tester ?? "").trim().toLowerCase();
+      const match = testerOptions.find((o) => o.name.toLowerCase() === wanted);
+      if (wanted && !match) unassigned++;
       addTestCase({
         campaignId: campaign.id,
         featureId: row.featureId,
         name: row.name.trim(),
         criticality: row.criticality,
         type: row.type,
-        tester: row.tester || undefined,
+        tester: match?.name,
+        assignedTo: match ? Number(match.id) : null,
         preconditions: row.preconditions,
         steps: row.steps,
         expected: row.expected,
@@ -138,6 +159,11 @@ function ImportTestsPage() {
       created++;
     }
     toast.success(t("pages.campaign_detail.import_success").replace("{n}", String(created)));
+    if (unassigned > 0) {
+      toast.error(
+        `${t("pages.campaign_detail.tester_inconnu")} (${unassigned})`,
+      );
+    }
     navigate({ to: "/campagnes/$campaignId", params: { campaignId: campaign.id } });
   };
 

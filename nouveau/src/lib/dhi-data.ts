@@ -168,6 +168,13 @@ export interface TestCase {
   expectedValue?: string | undefined;
   measuredValue?: string | undefined;
   tester?: string | undefined;
+  /**
+   * Id du testeur affecte (reference users).
+   * `null` = affectation explicitement retiree, `undefined` = non renseigne.
+   * La distinction est necessaire : `null` doit etre envoye au backend pour
+   * effacer l'affectation, alors qu'une cle absente doit la laisser intacte.
+   */
+  assignedTo?: number | null | undefined;
   executedAt?: string | undefined;
   duration?: string | undefined;
   executionId?: string | undefined;
@@ -257,6 +264,12 @@ export interface GoLiveChecklistItem {
 
 export interface GoLiveDecision {
   id: string;
+  /**
+   * Identifiant de la décision côté base (table go_live_decisions).
+   * Indispensable pour rattacher les captures d'écran : les preuves référencent
+   * l'entité par son id numérique, pas par l'identifiant local `GL-...`.
+   */
+  backendId?: number | null;
   releaseId: string;
   verdict: GoLiveVerdict;
   date: string;
