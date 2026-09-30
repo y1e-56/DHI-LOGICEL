@@ -212,7 +212,7 @@ export type BackendEvidence = {
 };
 
 export async function uploadEvidence(
-  entityType: "product" | "project" | "campaign" | "feature" | "go_live_decision",
+  entityType: "product" | "project" | "campaign" | "feature" | "go_live_decision" | "anomaly",
   entityId: string,
   file: File,
   description: string,
@@ -257,6 +257,19 @@ export async function downloadEvidence(id: number, fileName?: string | null) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Recupere une preuve en blob authentifie pour l'afficher en vignette. Le
+ * jeton est transmis par en-tete : un <img src> ne l'enverrait pas.
+ */
+export async function fetchEvidenceObjectUrl(id: number): Promise<string> {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_BASE_URL}/evidence/${id}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) throw new Error("evidence blob");
+  return URL.createObjectURL(await response.blob());
 }
 
 export function mapBackendEvidence(evidence: BackendEvidence) {
@@ -548,7 +561,7 @@ export async function getGoLiveDecisions(releaseRef?: string) {
 
 /** Preuves (captures d'écran, images) rattachées à une décision Go Live. */
 export async function getEvidenceByEntity(
-  entityType: "go_live_decision" | "campaign" | "feature" | "product" | "project",
+  entityType: string,
   entityId: number,
 ) {
   return api<{ data: BackendEvidence[] }>(

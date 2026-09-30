@@ -247,23 +247,19 @@ function EditRequirementPage() {
                   </Select>
                 </div>
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>{t("pages.requirements.fonctionnalites_couvertes")}</Label>
-                  <span className="text-[11px] text-muted-foreground">
-                    {t("pages.requirements.selection_count").replace(
-                      "{count}",
-                      String(form.featureIds.length),
-                    )}{" "}
-                    / {linkedFeatures.length}
-                  </span>
-                </div>
-                <div className="rounded-md border border-border bg-subtle/50 p-3 max-h-56 overflow-y-auto">
-                  {linkedFeatures.length === 0 ? (
-                    <p className="text-xs text-muted-foreground text-center py-4">
-                      {t("pages.requirements.aucune_feature_produit")}
-                    </p>
-                  ) : (
+              {linkedFeatures.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>{t("pages.requirements.fonctionnalites_couvertes")}</Label>
+                    <span className="text-[11px] text-muted-foreground">
+                      {t("pages.requirements.selection_count").replace(
+                        "{count}",
+                        String(form.featureIds.length),
+                      )}{" "}
+                      / {linkedFeatures.length}
+                    </span>
+                  </div>
+                  <div className="rounded-md border border-border bg-subtle/50 p-3 max-h-56 overflow-y-auto">
                     <div className="grid gap-2 sm:grid-cols-2">
                       {linkedFeatures.map((f) => (
                         <label
@@ -285,9 +281,9 @@ function EditRequirementPage() {
                         </label>
                       ))}
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 

@@ -255,6 +255,8 @@ export const frDict = {
       name_required: "Le nom de la campagne est requis.",
       project_required: "Rattachez la campagne à un projet (et donc à une version).",
       end_date_before_start: "La date de fin ne peut pas être antérieure à la date de début.",
+      starts_before_project: "La campagne ne peut pas commencer avant le début du projet.",
+      ends_after_project: "La campagne ne peut pas se terminer après la fin du projet.",
       created: "créée",
       choose_project: "Choisir un projet…",
       environment: "Environnement",
@@ -333,6 +335,25 @@ export const frDict = {
       csv_version: "version",
       csv_affecte: "affecte",
       csv_cree: "cree",
+      evidence_section: "Preuves (captures d'écran)",
+      evidence_empty: "Aucune capture jointe.",
+      add_capture: "Joindre une capture",
+      captures_count: "{n} / {max} capture(s)",
+      remove_capture: "Retirer cette capture",
+      images_only: "Seules les images peuvent être jointes.",
+      non_image_ignored: "Les fichiers qui ne sont pas des images ont été ignorés.",
+      capture_too_big: "{n} capture(s) dépassent 10 Mo et ont été ignorées.",
+      max_captures: "Vous pouvez joindre au maximum {n} captures.",
+      captures_hint:
+        "Une capture d'écran justifie le signalement et aide le développeur à corriger.",
+      login_required_for_captures:
+        "Connectez-vous pour joindre des captures : elles sont enregistrées côté serveur.",
+      report_requires_captures:
+        "Joignez au moins une capture d'écran justifiant le signalement.",
+      fix_requires_captures:
+        "Joignez au moins une capture confirmant la correction avant de signaler la résolution.",
+      save_captures: "Enregistrer les captures",
+      evidence_saved: "Captures enregistrées.",
     },
     execution_detail: {
       title_prefix: "Exécution du test",
@@ -505,6 +526,7 @@ export const frDict = {
       product: "Produit",
       all_products: "Tous les produits",
       required: "Nom et produit sont requis.",
+      end_date_before_start: "La date de fin ne peut pas être antérieure à la date de début.",
       created: "Projet créé.",
       updated: "Projet mis à jour.",
       deleted: "Projet supprimé.",

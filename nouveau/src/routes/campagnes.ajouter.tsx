@@ -91,6 +91,18 @@ function CreateCampaignPage() {
       return;
     }
 
+    // La campagne est une tranche du projet : sa periode doit y tenir, sinon on
+    // obtient une campagne qui se termine apres son projet ou n'y a pas commence.
+    const parentProject = viewableProjects.find((p) => p.id === form.projectId);
+    if (parentProject?.startDate && form.startDate < parentProject.startDate) {
+      toast.error(t("pages.add_campaign.starts_before_project"));
+      return;
+    }
+    if (parentProject?.endDate && form.endDate && form.endDate > parentProject.endDate) {
+      toast.error(t("pages.add_campaign.ends_after_project"));
+      return;
+    }
+
     const localCampaign = {
         productId: form.productId,
         projectId: form.projectId,

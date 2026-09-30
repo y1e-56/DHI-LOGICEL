@@ -52,16 +52,24 @@ function EditProjectPage() {
   const { projectId } = Route.useParams();
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { products, projects, users, updateProject, replaceProjects } = useStore();
-  const activeMembers = users.filter((u) => u.active).map((u) => u.name);
+  const { products, projects, users, updateProject, replaceProjects, currentUser } = useStore();
+  const viewableProducts = useVisibleProducts(products);
   const managerOptions = users
     .filter((u) => u.active && userHasAnyRole(u, "chef_projet", "quality_manager", "qa_lead"))
     .map((u) => u.name);
   const qaOptions = users
     .filter((u) => u.active && userHasAnyRole(u, "quality_manager", "qa_lead"))
     .map((u) => u.name);
-  const viewableProducts = useVisibleProducts(products);
   const project = projects.find((p) => p.id === projectId);
+
+  // Meme regle qu'a la creation : on ne se propose pas soi-meme. En edition on
+  // conserve neanmoins la valeur deja enregistree, sinon elle disparaitrait de
+  // la liste et le select afficherait un choix fantome.
+  const withoutMe = (names: string[], current: string | undefined) => {
+    const others = names.filter((n) => n !== currentUser?.name);
+    if (current && names.includes(current)) return [...others, current];
+    return others.length > 0 ? others : names;
+  };
 
   const [form, setForm] = useState<ProjectForm>(() => ({
     name: project?.name ?? "",
@@ -85,6 +93,10 @@ function EditProjectPage() {
     e.preventDefault();
     if (!form.name.trim() || !form.productId) {
       toast.error(t("pages.projects.required"));
+      return;
+    }
+    if (form.startDate && form.endDate && form.startDate > form.endDate) {
+      toast.error(t("pages.projects.end_date_before_start"));
       return;
     }
     if (!localStorage.getItem("token") || !/^\d+$/.test(project.id)) {
@@ -254,7 +266,7 @@ function EditProjectPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {managerOptions.map((p) => (
+                      {withoutMe(managerOptions, form.manager).map((p) => (
                         <SelectItem key={p} value={p}>
                           {p}
                         </SelectItem>
@@ -272,7 +284,7 @@ function EditProjectPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {qaOptions.map((p) => (
+                      {withoutMe(qaOptions, form.qaLead).map((p) => (
                         <SelectItem key={p} value={p}>
                           {p}
                         </SelectItem>
