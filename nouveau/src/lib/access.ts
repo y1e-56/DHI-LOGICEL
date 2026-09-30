@@ -59,21 +59,27 @@ export function projectVisibleTo(
   return project.manager === name || project.qaLead === name;
 }
 
+/**
+ * Acces a une campagne : les roles qualite (vue complete) voient tout, sinon
+ * l'utilisateur doit etre membre de la campagne — chef testeur, testeur ou
+ * developpeur. Le produit ne donne plus acces a lui seul : etre owner ou QA d'un
+ * produit ne doit pas ouvrir toutes les campagnes de ce produit a un chef
+ * testeur qui n'y est pas affecte.
+ */
 export function campaignVisibleTo(
   campaign: Campaign,
-  products: Product[],
+  _products: Product[],
   user: SessionUser | null,
 ): boolean {
   if (!user) return false;
   if (userCanAccessAll(user)) return true;
-  const product = products.find((p) => p.id === campaign.productId);
-  if (product && productVisibleTo(product, user)) return true;
   const name = user.name;
+  if (!name) return false;
   return (
     campaign.owner === name ||
+    (Array.isArray(campaign.testLeads) && campaign.testLeads.includes(name)) ||
     (Array.isArray(campaign.testers) && campaign.testers.includes(name)) ||
-    (Array.isArray(campaign.developers) && campaign.developers.includes(name)) ||
-    (Array.isArray(campaign.testLeads) && campaign.testLeads.includes(name))
+    (Array.isArray(campaign.developers) && campaign.developers.includes(name))
   );
 }
 
