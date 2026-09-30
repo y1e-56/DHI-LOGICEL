@@ -21,6 +21,7 @@ import { campaignStats, useStore } from "@/lib/dhi-store";
 import { useI18n } from "@/lib/i18n";
 import { useVisibleProducts, useVisibleProjects, useVisibleCampaigns } from "@/lib/use-scope";
 import { api, mapBackendCampaign, type BackendCampaign } from "@/lib/api";
+import { isTesterRole } from "@/lib/access";
 
 export const Route = createFileRoute("/campagnes/ajouter")({
   head: () => ({
@@ -49,7 +50,7 @@ function CreateCampaignPage() {
     roles: u.roles ?? [u.role],
     active: u.active,
   }));
-  const testerOptions = memberOptions.filter((o) => o.active && (o.roles ? o.roles : [o.role]).some((r) => r === "testeur" || r === "chef_testeur"));
+  const testerOptions = memberOptions.filter((o) => o.active && isTesterRole(o.roles, o.role));
   const devOptions = memberOptions.filter((o) => o.active && (o.roles ? o.roles : [o.role]).includes("developpeur"));
 
   const viewableProducts = useVisibleProducts(products);

@@ -65,7 +65,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { campaignStats, loadSnapshot, useStore } from "@/lib/dhi-store";
-import { getUser, campaignVisibleTo } from "@/lib/access";
+import { getUser, campaignVisibleTo, isTesterRole } from "@/lib/access";
 import { canManageOperational, canManageCampaign } from "@/lib/role-protection";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
 import { api, type BackendCampaign } from "@/lib/api";
@@ -620,7 +620,7 @@ function ManageMembersDialog({
     active: u.active,
   }));
   const leadOptions = memberOptions.filter((o) => o.active && (o.roles ? o.roles : [o.role]).some((r) => r === "chef_testeur" || r === "quality_manager" || r === "qa_lead"));
-  const testerOptions = memberOptions.filter((o) => o.active && (o.roles ? o.roles : [o.role]).some((r) => r === "testeur" || r === "chef_testeur"));
+  const testerOptions = memberOptions.filter((o) => o.active && isTesterRole(o.roles, o.role));
   const devOptions = memberOptions.filter((o) => o.active && (o.roles ? o.roles : [o.role]).includes("developpeur"));
 
   const save = async () => {

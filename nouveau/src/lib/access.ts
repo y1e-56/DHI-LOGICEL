@@ -119,6 +119,16 @@ export function visibleDefects(defects: Defect[], user: SessionUser | null): Def
 }
 
 /**
+ * Seuls les comptes de rôle « testeur » sont proposés comme testeurs d'une
+ * campagne. Un chef testeur se choisit dans le champ « Chef(s) de test » : le
+ * proposer aussi parmi les testeurs melangeait deux rôles sur la même campagne.
+ */
+export function isTesterRole(roles: string[] | undefined, role?: string): boolean {
+  const assigned = Array.isArray(roles) && roles.length > 0 ? roles : role ? [role] : [];
+  return assigned.includes("testeur");
+}
+
+/**
  * Testeurs assignables à une campagne : uniquement les comptes actifs qui ont
  * été enregistrés lors de la création de la campagne (campaign.testers), pas
  * tous les testeurs de l'application.
@@ -131,13 +141,9 @@ export function campaignTesterOptions(
   return users
     .filter((u) => {
       if (!u.active || !names.has(u.name)) return false;
-      const roles = u.roles ?? [u.role];
+      if (!isTesterRole(u.roles, u.role)) return false;
       const id = Number(u.id);
-      return (
-        Number.isInteger(id) &&
-        id > 0 &&
-        roles.some((r) => r === "testeur" || r === "chef_testeur")
-      );
+      return Number.isInteger(id) && id > 0;
     })
     .sort((a, b) => a.name.localeCompare(b.name, "fr"))
     .map((u) => ({ id: u.id, name: u.name }));
