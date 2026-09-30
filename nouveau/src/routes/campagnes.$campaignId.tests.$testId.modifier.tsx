@@ -16,7 +16,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
-import { getUser, campaignVisibleTo } from "@/lib/access";
+import { getUser, campaignVisibleTo, campaignTesterOptions } from "@/lib/access";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
 import { canManageCampaign } from "@/lib/role-protection";
 import {
@@ -104,20 +104,25 @@ function EditTestPage() {
     [features, campaign?.productId],
   );
 
-  /** Comptes actifs ayant un rôle de test, avec leur id pour l'enregistrement. */
-  const testerOptions = useMemo(
-    () =>
-      users
-        .filter((u) => {
-          if (!u.active) return false;
-          const roles = u.roles ?? [u.role];
-          const id = Number(u.id);
-          return Number.isInteger(id) && id > 0 && roles.some((r) => r === "testeur" || r === "chef_testeur");
-        })
-        .sort((a, b) => a.name.localeCompare(b.name, "fr"))
-        .map((u) => ({ id: u.id, name: u.name })),
-    [users],
-  );
+  /**
+   * Testeurs proposés : uniquement les comptes actifs enregistrés dans la
+   * campagne lors de sa création. On conserve aussi le testeur déjà affecté
+   * au cas (même s'il a été retiré de la campagne) pour ne pas l'effacer
+   * silencieusement.
+   */
+  const testerOptions = useMemo(() => {
+    const options = campaignTesterOptions(users, campaign?.testers);
+    if (
+      test?.tester &&
+      !options.some((o) => o.name === test.tester)
+    ) {
+      options.push({
+        id: test.assignedTo != null ? String(test.assignedTo) : "0",
+        name: test.tester,
+      });
+    }
+    return options;
+  }, [users, campaign?.testers, test?.tester, test?.assignedTo]);
 
   const [form, setForm] = useState<TestForm>(() => ({
     name: test?.name ?? "",

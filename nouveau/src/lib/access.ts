@@ -111,3 +111,28 @@ export function visibleDefects(defects: Defect[], user: SessionUser | null): Def
   if (!user || userCanAccessAll(user)) return defects;
   return defects.filter((d) => defectVisibleTo(d, user));
 }
+
+/**
+ * Testeurs assignables à une campagne : uniquement les comptes actifs qui ont
+ * été enregistrés lors de la création de la campagne (campaign.testers), pas
+ * tous les testeurs de l'application.
+ */
+export function campaignTesterOptions(
+  users: PlatformUser[],
+  campaignTesters: string[] | undefined,
+): { id: string; name: string }[] {
+  const names = new Set(campaignTesters ?? []);
+  return users
+    .filter((u) => {
+      if (!u.active || !names.has(u.name)) return false;
+      const roles = u.roles ?? [u.role];
+      const id = Number(u.id);
+      return (
+        Number.isInteger(id) &&
+        id > 0 &&
+        roles.some((r) => r === "testeur" || r === "chef_testeur")
+      );
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"))
+    .map((u) => ({ id: u.id, name: u.name }));
+}

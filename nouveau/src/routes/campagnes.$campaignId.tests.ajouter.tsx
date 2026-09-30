@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
-import { getUser, campaignVisibleTo } from "@/lib/access";
+import { getUser, campaignVisibleTo, campaignTesterOptions } from "@/lib/access";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
 import { canManageCampaign } from "@/lib/role-protection";
 import { campaigns as seedCampaigns, type Criticality, type TestType } from "@/lib/dhi-data";
@@ -92,23 +92,15 @@ function AddTestPage() {
   const campaign = campaigns.find((c) => c.id === campaignId);
 
   /**
-   * Testeurs proposés dans le formulaire : comptes actifs de l'application
-   * ayant un rôle de test. Le nom seul ne suffit pas — la colonne backend est
-   * une référence users(id) — donc on conserve l'id pour l'enregistrement.
+   * Testeurs proposés dans le formulaire : uniquement les comptes actifs
+   * enregistrés dans la campagne lors de sa création (campaign.testers).
+   * Le nom seul ne suffit pas — la colonne backend est une référence
+   * users(id) — donc on conserve l'id pour l'enregistrement.
    * Sans id numérique résolvable, le cas ne peut pas être persisté.
    */
   const testerOptions = useMemo(
-    () =>
-      users
-        .filter((u) => {
-          if (!u.active) return false;
-          const roles = u.roles ?? [u.role];
-          const id = Number(u.id);
-          return Number.isInteger(id) && id > 0 && roles.some((r) => r === "testeur" || r === "chef_testeur");
-        })
-        .sort((a, b) => a.name.localeCompare(b.name, "fr"))
-        .map((u) => ({ id: u.id, name: u.name })),
-    [users],
+    () => campaignTesterOptions(users, campaign?.testers),
+    [users, campaign?.testers],
   );
 
   const campaignFeatures = useMemo(

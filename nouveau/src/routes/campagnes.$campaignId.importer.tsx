@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
-import { getUser, campaignVisibleTo } from "@/lib/access";
+import { getUser, campaignVisibleTo, campaignTesterOptions } from "@/lib/access";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
 import { canManageCampaign } from "@/lib/role-protection";
 import { campaigns as seedCampaigns } from "@/lib/dhi-data";
@@ -50,22 +50,14 @@ function ImportTestsPage() {
   const store = useStore();
   const { campaigns, features, products, addTestCase, users } = store;
 
-  /** Testeurs sélectionnables : comptes actifs de l'app avec un rôle de test. */
+  /** Testeurs sélectionnables : uniquement ceux enregistrés dans la campagne (campaign.testers). */
+  const campaign = campaigns.find((c) => c.id === campaignId);
   const testerOptions = useMemo(
-    () =>
-      users
-        .filter((u) => {
-          if (!u.active) return false;
-          const roles = u.roles ?? [u.role];
-          const id = Number(u.id);
-          return Number.isInteger(id) && id > 0 && roles.some((r) => r === "testeur" || r === "chef_testeur");
-        })
-        .map((u) => ({ id: u.id, name: u.name })),
-    [users],
+    () => campaignTesterOptions(users, campaign?.testers),
+    [users, campaign?.testers],
   );
   const { t } = useI18n();
   const navigate = useNavigate();
-  const campaign = campaigns.find((c) => c.id === campaignId);
 
   const [importFileName, setImportFileName] = useState("");
   const [importPreview, setImportPreview] = useState<ParsedTestRow[]>([]);

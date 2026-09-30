@@ -579,10 +579,9 @@ function ExecutionPage() {
     c === "critique" || c === "haute" ? "haute" : c === "basse" ? "basse" : "moyenne";
 
   const devs = users.filter((u) => u.active && (u.roles ?? [u.role]).includes("developpeur"));
-  const assigneeOptions =
-    campaignTesters.length > 0
-      ? campaignTesters
-      : users.filter((u) => u.active).map((u) => u.name);
+  // L'anomalie est affectée à un testeur de la campagne uniquement : on ne
+  // propose pas tous les testeurs de l'application.
+  const assigneeOptions = campaignTesters;
 
   const openCreateDialog = () => {
     const severity = sevOfCriticality(test.criticality);
