@@ -1148,11 +1148,14 @@ export const NOTIFICATION_TYPES_BACKEND_TO_FRONT: Record<string, NotificationTyp
   reopened: "defect_status",
   feature_conforme: "defect_status",
   task_assigned: "test_assign",
+  test_case_assigned: "test_assign",
   member_added: "campaign",
   campaign_created: "campaign",
   campaign_completed: "campaign",
   product_created: "product",
   project_created: "project",
+  project_archived: "project",
+  go_live_decision: "golive",
   password_forgot: "system",
 };
 

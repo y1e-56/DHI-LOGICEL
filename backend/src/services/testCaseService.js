@@ -42,6 +42,15 @@ export async function createTestCase(data) {
 
   const testCase = await db.testCases.create(data, feature.campaign_id);
   bus.emit('testCase:created', { testCase, feature_id: data.feature_id });
+  if (testCase?.assigned_to) {
+    bus.emit('testCase:assigned', {
+      test_case_id: testCase.id,
+      test_name: testCase.name,
+      campaign_id: testCase.campaign_id ?? feature.campaign_id,
+      assigned_to: testCase.assigned_to,
+      reassigned: false,
+    });
+  }
   return testCase;
 }
 
@@ -73,5 +82,19 @@ export async function updateTestCase(id, data) {
   const updated = await db.testCases.update(id, { ...data, feature_id: featureId });
   if (!updated) throw new AppError('Cas de test non trouvé', 404);
   bus.emit('testCase:updated', { testCase: updated, feature_id: featureId });
+
+  // Seul un changement réel de testeur déclenche une notification : ré-enregistrer
+  // le formulaire sans toucher `assigned_to` ne doit pas renvoyer de mail.
+  const previousTester = testCase.assigned_to ?? null;
+  const nextTester = updated.assigned_to ?? null;
+  if (nextTester && nextTester !== previousTester) {
+    bus.emit('testCase:assigned', {
+      test_case_id: updated.id,
+      test_name: updated.name,
+      campaign_id: updated.campaign_id ?? null,
+      assigned_to: nextTester,
+      reassigned: previousTester !== null,
+    });
+  }
   return updated;
 }
