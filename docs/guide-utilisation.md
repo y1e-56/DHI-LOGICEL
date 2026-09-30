@@ -24,15 +24,15 @@ Manuel de prise en main de l'application de pilotage qualité : ce que chaque r�
 
 ### Comptes de démonstration
 
-Cinq comptes sont créés automatiquement au premier démarrage du serveur (si la table des utilisateurs est vide). La page de connexion les propose en un clic.
+Cinq comptes sont créés automatiquement au premier démarrage du serveur (si la table des utilisateurs est vide). La page de connexion les propose en un clic : un clic sur le compte renseigne tout seul l'identifiant et le mot de passe, sans qu'ils soient affichés.
 
-| Compte | Identifiant | Mot de passe | Rôle |
-|---|---|---|---|
-| Admin Principal | `admin@test.fr` | `Admin@DHI2026` | Administrateur |
-| Chef Projet | `chef@test.fr` | `Chef@DHI2026` | Chef testeur |
-| Second Chef | `chef2@test.fr` | `Chef@DHI2026` | Chef testeur |
-| Testeur Principal | `testeur@test.fr` | `Testeur@DHI2026` | Testeur |
-| Développeur Senior | `dev@test.fr` | `Dev@DHI2026` | Développeur |
+| Compte | Identifiant | Rôle |
+|---|---|---|
+| Admin Principal | `admin@test.fr` | Administrateur |
+| Chef Projet | `chef@test.fr` | Chef testeur |
+| Second Chef | `chef2@test.fr` | Chef testeur |
+| Testeur Principal | `testeur@test.fr` | Testeur |
+| Développeur Senior | `dev@test.fr` | Développeur |
 
 > Les cinq comptes sont en rôle « simple ». Ils ne couvrent donc pas les rôles *Responsable qualité*, *Lead QA*, *Product Owner*, *Approbateur* ni *Lecteur*. Pour les essayer, créez-les via **Administration → Ajouter un utilisateur** avec un compte Administrateur.
 
