@@ -1,4 +1,5 @@
 import type { TranslationKey } from "@/lib/i18n";
+import { canManageCampaign } from "@/lib/role-protection";
 
 export interface AppShellTab {
   to: string;
@@ -55,9 +56,9 @@ export function projectTabs(projectId: string): AppShellTab[] {
   ];
 }
 
-/** Onglets horizontaux contextuels d'une campagne (Vue d'ensemble → Fonctionnalités → Cas de test → Importer). */
+/** Onglets horizontaux contextuels d'une campagne (Vue d'ensemble → Fonctionnalités → Cas de test → Importer). Seuls les rôles qui pilotent la campagne voient l'onglet Importer. */
 export function campaignTabs(campaignId: string): AppShellTab[] {
-  return [
+  const tabs: AppShellTab[] = [
     {
       to: "/campagnes/$campaignId",
       label: "nav.campaign_overview",
@@ -75,14 +76,17 @@ export function campaignTabs(campaignId: string): AppShellTab[] {
       params: { campaignId },
     },
     {
-      to: "/campagnes/$campaignId/importer",
-      label: "nav.campaign_import",
-      params: { campaignId },
-    },
-    {
       to: "/campagnes/$campaignId/documents",
       label: "nav.campaign_documents",
       params: { campaignId },
     },
   ];
+  if (canManageCampaign()) {
+    tabs.splice(3, 0, {
+      to: "/campagnes/$campaignId/importer",
+      label: "nav.campaign_import",
+      params: { campaignId },
+    });
+  }
+  return tabs;
 }

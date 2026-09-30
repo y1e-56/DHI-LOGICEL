@@ -17,7 +17,7 @@ import { campaigns as seedCampaigns } from "@/lib/dhi-data";
 import { campaignTabs } from "@/lib/dhi-nav";
 import { useI18n } from "@/lib/i18n";
 import { api, mapBackendTestCase, type BackendTestCase, type BackendTestExecution } from "@/lib/api";
-import { canManageOperational } from "@/lib/role-protection";
+import { canManageOperational, canManageCampaign } from "@/lib/role-protection";
 import type { TestCase } from "@/lib/dhi-data";
 
 export const Route = createFileRoute("/campagnes/$campaignId/tests")({
@@ -156,7 +156,7 @@ function CampaignTests() {
                   <Select
                     value={tc.assignedTo != null ? String(tc.assignedTo) : "__none__"}
                     onValueChange={(v) => onAssign(tc.id, v)}
-                    disabled={locked || !canManageOperational()}
+                    disabled={locked || !canManageCampaign()}
                   >
                     <SelectTrigger className="h-8 w-40">
                       <SelectValue placeholder={t("pages.campaign_detail.unassigned")} />

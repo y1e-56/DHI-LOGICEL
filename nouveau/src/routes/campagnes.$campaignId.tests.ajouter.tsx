@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
 import { getUser, campaignVisibleTo } from "@/lib/access";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
+import { canManageCampaign } from "@/lib/role-protection";
 import { campaigns as seedCampaigns, type Criticality, type TestType } from "@/lib/dhi-data";
 import { exportCsvTemplate, exportNorTemplate, parseImportText } from "@/lib/test-import";
 import { campaignTabs } from "@/lib/dhi-nav";
@@ -174,6 +175,9 @@ function AddTestPage() {
   };
 
   if (campaign && !campaignVisibleTo(campaign, products, getUser())) {
+    return <CampaignAccessDenied subject={campaign.name} />;
+  }
+  if (campaign && !canManageCampaign()) {
     return <CampaignAccessDenied subject={campaign.name} />;
   }
   if (campaign?.status === "terminee") {

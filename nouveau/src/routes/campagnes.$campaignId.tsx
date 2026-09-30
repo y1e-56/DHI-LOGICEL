@@ -66,7 +66,7 @@ import {
 } from "@/components/ui/select";
 import { campaignStats, loadSnapshot, useStore } from "@/lib/dhi-store";
 import { getUser, campaignVisibleTo } from "@/lib/access";
-import { canManageOperational } from "@/lib/role-protection";
+import { canManageOperational, canManageCampaign } from "@/lib/role-protection";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
 import { api, type BackendCampaign } from "@/lib/api";
 import {
@@ -282,6 +282,7 @@ function CampaignTestsTable({
   const { campaigns, updateTest, users } = useStore();
   const campaign = campaigns.find((c) => c.id === campaignId);
   const assignees = campaign?.testers ?? [];
+  const canManage = canManageCampaign();
 
   const reassign = (testId: string, testerName: string) => {
     if (testerName === "__none__") {
@@ -343,7 +344,7 @@ function CampaignTestsTable({
                 </span>
               </TableCell>
               <TableCell className="text-sm">
-                <Select value={tc.tester ?? ""} onValueChange={(v) => reassign(tc.id, v)} disabled={locked || !canManageOperational()}>
+                <Select value={tc.tester ?? ""} onValueChange={(v) => reassign(tc.id, v)} disabled={locked || !canManage}>
                   <SelectTrigger className="h-8 w-40"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">{t("pages.campaign_detail.unassigned")}</SelectItem>
@@ -363,7 +364,7 @@ function CampaignTestsTable({
                 )}
               </TableCell>
               <TableCell>
-                {!locked && canManageOperational() ? <div className="flex justify-end gap-1">
+                {!locked && canManage ? <div className="flex justify-end gap-1">
                   <Link to="/campagnes/$campaignId/tests/$testId/modifier" params={{ campaignId, testId: tc.id }} title={t("pages.campaign_detail.modifier_cas_test")}>
                     <Button size="icon" variant="ghost" className="size-7"><Pencil className="size-4" /></Button>
                   </Link>
@@ -448,7 +449,7 @@ function CampaignActions({
   onExportTemplate: () => void;
 }) {
   const { t } = useI18n();
-  const canManage = canManageOperational();
+  const canManage = canManageCampaign();
   const navigate = useNavigate();
   const [membersOpen, setMembersOpen] = useState(false);
   return (
@@ -464,38 +465,34 @@ function CampaignActions({
           <Plus /> {t("pages.campaign_detail.ajouter_un_test")}
         </Button>
       ) : null}
-      {campaign.status !== "terminee" ? (
+      {canManage && campaign.status !== "terminee" ? (
         <ImportMenu
-          label={canManage ? t("actions.importer") : t("pages.campaign_detail.import_fichier")}
+          label={t("actions.importer")}
           descriptionLabel={t("pages.campaign_detail.import_choisir")}
-          options={
-            canManage
-              ? [
-                  {
-                    key: "tests",
-                    label: t("campagne_import.menu_title"),
-                    description: t("campagne_import.menu_description"),
-                    icon: Upload,
-                    onSelect: () =>
-                      navigate({
-                        to: "/campagnes/$campaignId/importer",
-                        params: { campaignId: campaign.id },
-                      }),
-                  },
-                  {
-                    key: "features",
-                    label: t("pages.features.menu_title"),
-                    description: t("pages.features.import_menu_description"),
-                    icon: FileUp,
-                    onSelect: () =>
-                      navigate({
-                        to: "/campagnes/$campaignId/fonctionnalites/importer",
-                        params: { campaignId: campaign.id },
-                      }),
-                  },
-                ]
-              : []
-          }
+          options={[
+            {
+              key: "tests",
+              label: t("campagne_import.menu_title"),
+              description: t("campagne_import.menu_description"),
+              icon: Upload,
+              onSelect: () =>
+                navigate({
+                  to: "/campagnes/$campaignId/importer",
+                  params: { campaignId: campaign.id },
+                }),
+            },
+            {
+              key: "features",
+              label: t("pages.features.menu_title"),
+              description: t("pages.features.import_menu_description"),
+              icon: FileUp,
+              onSelect: () =>
+                navigate({
+                  to: "/campagnes/$campaignId/fonctionnalites/importer",
+                  params: { campaignId: campaign.id },
+                }),
+            },
+          ]}
           secondaryLabel={t("pages.campaign_detail.modele_menu_titre")}
           secondary={[
             {

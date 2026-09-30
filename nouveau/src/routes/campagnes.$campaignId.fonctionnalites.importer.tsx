@@ -26,6 +26,7 @@ import {
 import { useStore } from "@/lib/dhi-store";
 import { campaignVisibleTo, getUser } from "@/lib/access";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
+import { canManageCampaign } from "@/lib/role-protection";
 import { useI18n } from "@/lib/i18n";
 import { CSV_SEP } from "@/lib/test-import";
 import {
@@ -67,6 +68,9 @@ function ImportFeaturesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (campaign && !campaignVisibleTo(campaign, products, getUser())) {
+    return <CampaignAccessDenied subject={campaign.name} />;
+  }
+  if (campaign && !canManageCampaign()) {
     return <CampaignAccessDenied subject={campaign.name} />;
   }
 

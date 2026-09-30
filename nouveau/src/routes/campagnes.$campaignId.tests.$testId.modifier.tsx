@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
 import { getUser, campaignVisibleTo } from "@/lib/access";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
+import { canManageCampaign } from "@/lib/role-protection";
 import {
   campaigns as seedCampaigns,
   testCases as seedTests,
@@ -132,6 +133,9 @@ function EditTestPage() {
   }));
 
   if (campaign && !campaignVisibleTo(campaign, products, getUser())) {
+    return <CampaignAccessDenied subject={campaign.name} />;
+  }
+  if (campaign && !canManageCampaign()) {
     return <CampaignAccessDenied subject={campaign.name} />;
   }
   if (campaign?.status === "terminee") {
