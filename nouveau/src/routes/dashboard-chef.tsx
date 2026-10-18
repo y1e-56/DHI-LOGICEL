@@ -4,10 +4,15 @@ import { AppShell } from "@/components/dhi/AppShell";
 import { KpiCard, Panel } from "@/components/dhi/indicators";
 import { useStore } from "@/lib/dhi-store";
 import { loadSession } from "@/lib/dhi-store";
+import { projectProgress } from "@/lib/progress";
 import { hasSessionRole } from "@/lib/role-protection";
 import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/dashboard-chef")({
+  // Pas de rendu serveur : la session vit dans le navigateur (localStorage).
+  // Rendue cote serveur, la page voyait toujours « non connecte » et le
+  // controle d'acces ne se refaisait pas ensuite dans le navigateur.
+  ssr: false,
   beforeLoad: () => {
     if (!hasSessionRole("chef_projet")) {
       throw redirect({ to: "/" });
@@ -28,7 +33,7 @@ export const Route = createFileRoute("/dashboard-chef")({
 function ChefDashboard() {
   const navigate = useNavigate();
   const { t } = useI18n();
-  const { projects, campaigns, products, features } = useStore();
+  const { projects, campaigns, products, features, tests } = useStore();
   const session = loadSession();
 
   const myProjects = projects; // Tous les projets sont visibles pour le chef
@@ -92,6 +97,7 @@ function ChefDashboard() {
           <ul className="divide-y divide-border">
             {activeProjects.slice(0, 5).map((pr) => {
               const product = products.find((p) => p.id === pr.productId);
+              const progress = projectProgress(tests, campaigns, pr.id);
               return (
                 <li key={pr.id}>
                   <Link
@@ -101,7 +107,7 @@ function ChefDashboard() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-medium">{pr.name}</p>
-                      <span className="num text-xs text-muted-foreground">{pr.progress} %</span>
+                      <span className="num text-xs text-muted-foreground">{progress} %</span>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {product?.name ?? t("common.produit")} · {t("common.version")}{" "}

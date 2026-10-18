@@ -14,7 +14,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
-import { getUser, campaignVisibleTo, campaignTesterOptions } from "@/lib/access";
+import {
+  getUser,
+  campaignVisibleTo,
+  campaignTesterOptions,
+  findTesterOption,
+  sampleTesterEmail,
+} from "@/lib/access";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
 import { canManageCampaign } from "@/lib/role-protection";
 import { campaigns as seedCampaigns } from "@/lib/dhi-data";
@@ -25,6 +31,7 @@ import {
   parseImportText,
   type ParsedTestRow,
 } from "@/lib/test-import";
+import { IMPORT_ACCEPT, readImportSource, rowsToCsv } from "@/lib/import-file";
 import { campaignTabs } from "@/lib/dhi-nav";
 import { useI18n } from "@/lib/i18n";
 
@@ -80,46 +87,50 @@ function ImportTestsPage() {
   }
   if (!campaign) return null;
 
-  const handleFilePick = (file: File) => {
+  const handleFilePick = async (file: File) => {
     setImportFileName(file.name);
     setImportPreview([]);
     setImportReady(false);
-    const reader = new FileReader();
-    reader.onerror = () => {
+
+    let parsed: ParsedTestRow[];
+    let norFormat = false;
+    try {
+      const source = await readImportSource(file);
+      if (source.kind === "table") {
+        parsed = parseImportText(rowsToCsv(source.rows), campaignFeatures, "import.csv");
+      } else if (source.kind === "csv") {
+        parsed = parseImportText(source.text, campaignFeatures, "import.csv");
+      } else {
+        norFormat = true;
+        parsed = parseImportText(source.text, campaignFeatures, "import.txt");
+      }
+    } catch {
       toast.error(t("pages.campaign_detail.erreur_lecture_csv"));
-    };
-    reader.onload = () => {
-      const text = String(reader.result ?? "");
-      if (!text.trim()) {
-        toast.error(t("pages.campaign_detail.fichier_invalide"));
-        return;
-      }
-      const parsed = parseImportText(text, campaignFeatures, file.name);
-      if (parsed.length === 0) {
-        toast.error(
-          file.name.toLowerCase().endsWith(".txt")
-            ? t("pages.campaign_detail.fichier_invalide")
-            : t("pages.campaign_detail.colonne_nom_introuvable"),
-        );
-        return;
-      }
-      setImportPreview(parsed);
-      setImportReady(parsed.some((p) => !p.errors.length));
-      const ok = parsed.filter((p) => p.errors.length === 0).length;
-      const bad = parsed.length - ok;
-      toast(
-        bad
-          ? t("pages.campaign_detail.import_ok_bad")
-              .replace("{ok}", String(ok))
-              .replace("{bad}", String(bad))
-          : t("pages.campaign_detail.import_ok_clean").replace("{ok}", String(ok)),
-        {
-          description: bad ? t("campagne_import.ignorer_lignes") : t("campagne_import.pret_import"),
-          icon: bad ? undefined : <CheckCircle2 className="size-4 text-success" />,
-        },
+      return;
+    }
+    if (parsed.length === 0) {
+      toast.error(
+        norFormat
+          ? t("pages.campaign_detail.fichier_invalide")
+          : t("pages.campaign_detail.colonne_nom_introuvable"),
       );
-    };
-    reader.readAsText(file, "UTF-8");
+      return;
+    }
+    setImportPreview(parsed);
+    setImportReady(parsed.some((p) => !p.errors.length));
+    const ok = parsed.filter((p) => p.errors.length === 0).length;
+    const bad = parsed.length - ok;
+    toast(
+      bad
+        ? t("pages.campaign_detail.import_ok_bad")
+            .replace("{ok}", String(ok))
+            .replace("{bad}", String(bad))
+        : t("pages.campaign_detail.import_ok_clean").replace("{ok}", String(ok)),
+      {
+        description: bad ? t("campagne_import.ignorer_lignes") : t("campagne_import.pret_import"),
+        icon: bad ? undefined : <CheckCircle2 className="size-4 text-success" />,
+      },
+    );
   };
 
   const handleImportSubmit = () => {
@@ -136,7 +147,7 @@ function ImportTestsPage() {
       // Résolution du nom de testeur issu du CSV vers un compte réel : sans id
       // numérique, l'affectation ne peut pas être enregistrée.
       const wanted = (row.tester ?? "").trim().toLowerCase();
-      const match = testerOptions.find((o) => o.name.toLowerCase() === wanted);
+      const match = findTesterOption(testerOptions, users, wanted);
       if (wanted && !match) unassigned++;
       addTestCase({
         campaignId: campaign.id,
@@ -156,9 +167,7 @@ function ImportTestsPage() {
     }
     toast.success(t("pages.campaign_detail.import_success").replace("{n}", String(created)));
     if (unassigned > 0) {
-      toast.error(
-        `${t("pages.campaign_detail.tester_inconnu")} (${unassigned})`,
-      );
+      toast.error(`${t("pages.campaign_detail.tester_inconnu")} (${unassigned})`);
     }
     navigate({ to: "/campagnes/$campaignId", params: { campaignId: campaign.id } });
   };
@@ -213,7 +222,7 @@ function ImportTestsPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,text/csv,.txt,text/plain"
+              accept={IMPORT_ACCEPT}
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -237,7 +246,7 @@ function ImportTestsPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => exportCsvTemplate(campaignFeatures)}
+                onClick={() => exportCsvTemplate(campaignFeatures, sampleTesterEmail(testerOptions, users))}
                 title="Modèle CSV"
               >
                 <FileUp className="size-4 mr-1.5" /> {t("campagne_import.telecharger_modele")}
@@ -245,7 +254,7 @@ function ImportTestsPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => exportNorTemplate(campaignFeatures)}
+                onClick={() => exportNorTemplate(campaignFeatures, sampleTesterEmail(testerOptions, users))}
                 title="Modèle NOR (.txt)"
               >
                 <FileUp className="size-4 mr-1.5" /> NOR (.txt)
@@ -266,7 +275,9 @@ function ImportTestsPage() {
                 <code>type</code> : fonctionnel, regression, securite, performance, etc.
               </li>
               <li>
-                <code>preconditions / steps / resultat_attendu / resultat_obtenu / commentaires</code>{" "}
+                <code>
+                  preconditions / steps / resultat_attendu / resultat_obtenu / commentaires
+                </code>{" "}
                 : {t("pages.campaign_detail.aide_separateurs")}
               </li>
             </ul>

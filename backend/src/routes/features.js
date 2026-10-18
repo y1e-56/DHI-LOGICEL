@@ -19,6 +19,7 @@ const createSchema = z.object({
   description: z.string().optional(),
   priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
   module: z.string().optional(),
+  coverage: z.record(z.boolean()).optional(),
   description_audio_data: z.string().max(100_000_000).optional(),
   description_audio_type: z.string().max(100).optional(),
   description_transcription: z.string().max(5000).optional(),
@@ -234,8 +235,9 @@ router.put('/:id', authenticate, requireFeatureManager, async (req, res) => {
  *       404: { $ref: '#/components/responses/NotFound' }
  */
 router.patch('/:id/status', authenticate, requireFeatureTester, async (req, res) => {
-  const { status } = req.body;
-  const feature = await featureService.updateFeatureStatus(Number(req.params.id), status);
+  const { status, confirm } = req.body;
+  // confirm : passer outre une regle de couverture en mode avertissement.
+  const feature = await featureService.updateFeatureStatus(Number(req.params.id), status, confirm === true);
   bus.emit('data:changed', { entity: 'features' });
   res.json({ feature });
 });

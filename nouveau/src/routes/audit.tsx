@@ -2,7 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/dhi/AppShell";
 import { KpiCard } from "@/components/dhi/indicators";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -11,6 +20,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { isInteractiveClick } from "@/lib/clickable-row";
+import type { AuditEntry } from "@/lib/dhi-data";
 
 import { useI18n } from "@/lib/i18n";
 import { useStore } from "@/lib/dhi-store";
@@ -22,10 +33,47 @@ export const Route = createFileRoute("/audit")({
   component: AuditPage,
 });
 
+function AuditDetailDialog({
+  entry,
+  open,
+  onOpenChange,
+}: {
+  entry: AuditEntry | null;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { t } = useI18n();
+  if (!entry) return null;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{entry.action}</DialogTitle>
+          <DialogDescription className="num">
+            {entry.entity} · {entry.at}
+          </DialogDescription>
+        </DialogHeader>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+          <dt className="text-muted-foreground">{t("pages.audit.acteur")}</dt>
+          <dd>{entry.actor}</dd>
+          <dt className="text-muted-foreground">{t("pages.audit.detail")}</dt>
+          <dd className="whitespace-pre-wrap">{entry.detail}</dd>
+        </dl>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            {t("actions.fermer")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AuditPage() {
   const { t } = useI18n();
   const { audit } = useStore();
   const [q, setQ] = useState("");
+  const [detail, setDetail] = useState<AuditEntry | null>(null);
   const rows = useMemo(() => {
     if (!q.trim()) return audit;
     const s = q.toLowerCase();
@@ -79,7 +127,14 @@ function AuditPage() {
           </TableHeader>
           <TableBody>
             {rows.map((e) => (
-              <TableRow key={e.id}>
+              <TableRow
+                key={e.id}
+                className="cursor-pointer"
+                onClick={(event) => {
+                  if (isInteractiveClick(event)) return;
+                  setDetail(e);
+                }}
+              >
                 <TableCell className="num whitespace-nowrap text-xs text-muted-foreground">
                   {e.at}
                 </TableCell>
@@ -101,6 +156,12 @@ function AuditPage() {
           </TableBody>
         </Table>
       </div>
+
+      <AuditDetailDialog
+        entry={detail}
+        open={detail !== null}
+        onOpenChange={(o) => !o && setDetail(null)}
+      />
     </AppShell>
   );
 }

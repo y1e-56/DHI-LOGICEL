@@ -1,13 +1,27 @@
 import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
-import { FlaskConical, Bug, History } from "lucide-react";
+import { FlaskConical, Bug, History, ListChecks } from "lucide-react";
 import { AppShell } from "@/components/dhi/AppShell";
-import { KpiCard, Panel } from "@/components/dhi/indicators";
+import { CriticalityBadge, KpiCard, Panel, VerdictBadge } from "@/components/dhi/indicators";
+import { QuickVerdictButtons } from "@/components/dhi/QuickVerdict";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useStore } from "@/lib/dhi-store";
 import { loadSession } from "@/lib/dhi-store";
 import { hasSessionRole } from "@/lib/role-protection";
 import { useI18n } from "@/lib/i18n";
+import type { TestCase } from "@/lib/dhi-data";
 
 export const Route = createFileRoute("/dashboard-testeur")({
+  // Pas de rendu serveur : la session vit dans le navigateur (localStorage).
+  // Rendue cote serveur, la page voyait toujours « non connecte » et le
+  // controle d'acces ne se refaisait pas ensuite dans le navigateur.
+  ssr: false,
   beforeLoad: () => {
     if (!hasSessionRole("testeur") && !hasSessionRole("chef_testeur")) {
       throw redirect({ to: "/" });
@@ -35,7 +49,30 @@ function TesteurDashboard() {
     (c) => c.testers.some((t) => t === session?.name) || c.owner === session?.name,
   );
 
-  const myTests = tests.filter((t) => myCampaigns.some((c) => c.id === t.campaignId));
+  /**
+   * Cas de test a traiter.
+   *
+   * Un testeur ne voit que ce qui lui est affecte : sans ce filtre, son tableau
+   * de bord afficherait les cas de ses collegues et il ne saurait pas lesquels
+   * sont les siens. Le chef de testeur, lui, pilote les campagnes dont il est
+   * responsable et doit voir la charge complete pour la redistribuer.
+   */
+  const assignedTests = (() => {
+    const inMyCampaigns = tests.filter((t) => myCampaigns.some((c) => c.id === t.campaignId));
+    if (hasSessionRole("chef_testeur")) return inMyCampaigns;
+    // `assignedTo` est l'id base, `tester` le nom affiche : l'affectation
+    // passe par l'un ou l'autre selon l'anciennete de la donnee.
+    const myId = session?.id;
+    return inMyCampaigns.filter(
+      (t) => (myId != null && String(t.assignedTo ?? "") === String(myId)) || t.tester === session?.name,
+    );
+  })();
+
+  // Les cas a traiter remontent en tete : c'est la seule question que le
+  // testeur se pose en se connectant.
+  const todoTests = assignedTests
+    .filter((t) => t.verdict === "NOT_RUN")
+    .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
   const myDefects = defects.filter(
     (d) => d.assignee === session?.name || d.reporter === session?.name,
@@ -69,6 +106,14 @@ function TesteurDashboard() {
           onClick={() => void navigate({ to: "/campagnes" })}
         />
         <KpiCard
+          label={t("dashboard.tester.my_test_cases")}
+          value={todoTests.length}
+          tone={todoTests.length ? "warning" : "success"}
+          icon={<ListChecks className="size-4" />}
+          hint={t("dashboard.tester.todo_hint")}
+          onClick={() => document.getElementById("mes-cas-de-test")?.scrollIntoView({ behavior: "smooth" })}
+        />
+        <KpiCard
           label={t("dashboard.tester.my_defects")}
           value={myDefects.length}
           tone={openDefects ? "warning" : "success"}
@@ -76,6 +121,78 @@ function TesteurDashboard() {
           hint={t("dashboard.tester.quick_actions")}
           onClick={() => void navigate({ to: "/anomalies" })}
         />
+      </div>
+
+      {/* Le travail du testeur. Sans ce panneau, un cas affecte n'etait
+          atteignable qu'en passant par Campagnes puis par l'onglet du cas :
+          rien ne montrait au testeur ce qu'il avait a faire. */}
+      <div id="mes-cas-de-test">
+        <Panel
+          title={
+            hasSessionRole("chef_testeur")
+              ? t("dashboard.tester.cases_to_distribute")
+              : t("dashboard.tester.my_test_cases")
+          }
+        >
+          {todoTests.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {t("dashboard.tester.no_todo")}
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("common.id")}</TableHead>
+                  <TableHead>{t("pages.campaign_detail.test")}</TableHead>
+                  <TableHead>{t("nav.campagnes")}</TableHead>
+                  <TableHead>{t("common.criticite")}</TableHead>
+                  <TableHead>{t("common.testeur")}</TableHead>
+                  <TableHead className="text-right">{t("quick_verdict.resolution_rapide")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {todoTests.map((tc: TestCase) => {
+                  const parent = myCampaigns.find((c) => c.id === tc.campaignId);
+                  // La resolution en un clic n'a de sens que sur une campagne
+                  // demarree ; sinon le testeur passe par "Executer".
+                  const resolvable = parent?.status === "encours";
+                  return (
+                    <TableRow key={tc.id}>
+                      <TableCell className="num font-medium">{tc.id}</TableCell>
+                      <TableCell className="max-w-xs truncate">
+                        <Link
+                          to="/execution/$testId"
+                          params={{ testId: tc.id }}
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          {tc.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="max-w-[180px] truncate text-sm">
+                        {parent?.name ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <CriticalityBadge level={tc.criticality} />
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {tc.tester ?? t("pages.campaign_detail.unassigned")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {resolvable ? (
+                          <QuickVerdictButtons test={tc} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {t("pages.campaign_detail.campagne_non_demarree")}
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </Panel>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

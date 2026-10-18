@@ -21,6 +21,10 @@ export const Route = createFileRoute("/login")({
       },
     ],
   }),
+  // Pas de rendu serveur : la session vit dans le navigateur (localStorage).
+  // Rendue cote serveur, la page voyait toujours « non connecte » et le
+  // controle d'acces ne se refaisait pas ensuite dans le navigateur.
+  ssr: false,
   beforeLoad: () => {
     const s = loadSession();
     if (s) return { redirect: "/" } as const;

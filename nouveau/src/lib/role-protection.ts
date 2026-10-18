@@ -1,5 +1,5 @@
 import { loadSession } from "./dhi-store";
-import { ROLE_PAGES, type AppRole } from "./dhi-data";
+import { ROLE_PAGES, type AppRole, type Verdict } from "./dhi-data";
 
 /** Tous les rôles de l'utilisateur connecté (union des rôles attribués). */
 export function getSessionRoles(): AppRole[] {
@@ -32,13 +32,13 @@ export function hasAccessToPage(path: string): boolean {
 
     // Vérifier si un chemin parent est autorisé (pour les routes dynamiques)
     // Par exemple, si "/produits" est autorisé, alors "/produits/123" l'est aussi
-    const pathParts = path.split('/').filter(Boolean);
+    const pathParts = path.split("/").filter(Boolean);
     if (pathParts.length > 1) {
-      const parentPath = '/' + pathParts[0];
+      const parentPath = "/" + pathParts[0];
       if (allowedPages.includes(parentPath)) return true;
 
       // Vérifier les chemins à deux niveaux comme "/campagnes/ajouter"
-      const twoLevelPath = '/' + pathParts.slice(0, 2).join('/');
+      const twoLevelPath = "/" + pathParts.slice(0, 2).join("/");
       if (allowedPages.includes(twoLevelPath)) return true;
     }
     return false;
@@ -54,7 +54,7 @@ export function hasAccessToPage(path: string): boolean {
  */
 export function getRedirectForUnauthorizedAccess(currentPath: string): string | null {
   const session = loadSession();
-  if (!session) return '/login';
+  if (!session) return "/login";
 
   return getDefaultDashboardForRole(session.role as AppRole);
 }
@@ -82,22 +82,28 @@ export function getDefaultDashboardForRole(role: AppRole): string {
 
 /**
  * Rôles autorisés à créer — aligné sur les matrices d'écriture du backend
- * (backend/src/routes : products.js, projects.js, campaigns.js, features.js, requirements.js).
+ * (backend/src/routes : products.js, projects.js, campaigns.js, features.js,
+ * requirements.js) : `requireRole` y autorise toujours `admin` en plus des
+ * rôles listés, admin est donc ajouté ici pour que les boutons du front
+ * correspondent aux droits réels du serveur.
  */
-export const CREATE_PRODUCT_ROLES: AppRole[] = ["quality_manager", "qa_lead"];
+export const CREATE_PRODUCT_ROLES: AppRole[] = ["admin", "quality_manager", "qa_lead"];
 export const CREATE_PROJECT_ROLES: AppRole[] = [
+  "admin",
   "chef_projet",
   "quality_manager",
   "qa_lead",
   "product_owner",
 ];
 export const CREATE_CAMPAIGN_ROLES: AppRole[] = [
+  "admin",
   "chef_testeur",
   "quality_manager",
   "qa_lead",
   "chef_projet",
 ];
 export const CREATE_FEATURE_ROLES: AppRole[] = [
+  "admin",
   "quality_manager",
   "qa_lead",
   "chef_projet",
@@ -146,6 +152,62 @@ export function canManageOperational(): boolean {
   return roles.some((r) => !OPERATIONAL_READ_ONLY_ROLES.includes(r));
 }
 
+/**
+ * Rôles autorisés à travailler une anomalie : la corriger, joindre les preuves
+ * et signaler la résolution (statut « à retester »). Aligné sur
+ * `requireAnomalyAssignee` du backend.
+ */
+export const ANOMALY_RESOLVE_ROLES: AppRole[] = [
+  "admin",
+  "quality_manager",
+  "qa_lead",
+  "chef_projet",
+  "chef_testeur",
+  "testeur",
+  "developpeur",
+];
+
+/**
+ * Rôles autorisés à juger une résolution : valider ou réouvrir l'anomalie.
+ * Aligné sur `requireAnomalyManager` + `testeur` (le testeur re-teste et tranche).
+ */
+export const ANOMALY_VALIDATE_ROLES: AppRole[] = [
+  "admin",
+  "quality_manager",
+  "qa_lead",
+  "chef_projet",
+  "chef_testeur",
+  "testeur",
+];
+
+/**
+ * Rôles autorisés à déclarer une anomalie. Aligné sur `requireAnomalyReporter`
+ * du backend (l'admin y passe toujours).
+ */
+export const ANOMALY_REPORT_ROLES: AppRole[] = [
+  "admin",
+  "quality_manager",
+  "qa_lead",
+  "chef_projet",
+  "chef_testeur",
+  "testeur",
+];
+
+/** L'utilisateur connecté peut-il déclarer une anomalie ? */
+export function canReportAnomaly(): boolean {
+  return roleIs(...ANOMALY_REPORT_ROLES);
+}
+
+/** L'utilisateur connecté peut-il corriger et signaler la résolution d'une anomalie ? */
+export function canResolveAnomaly(): boolean {
+  return roleIs(...ANOMALY_RESOLVE_ROLES);
+}
+
+/** L'utilisateur connecté peut-il valider ou réouvrir une anomalie ? */
+export function canValidateAnomaly(): boolean {
+  return roleIs(...ANOMALY_VALIDATE_ROLES);
+}
+
 /** Rôles autorisés à piloter une campagne : créer/éditer/supprimer des cas de test, importer, gérer les membres, démarrer/clôturer. */
 export const MANAGE_CAMPAIGN_ROLES: AppRole[] = [
   "admin",
@@ -158,6 +220,15 @@ export const MANAGE_CAMPAIGN_ROLES: AppRole[] = [
 /** L'utilisateur connecté peut-il piloter une campagne de tests (écriture/gestion) ? */
 export function canManageCampaign(): boolean {
   return roleIs(...MANAGE_CAMPAIGN_ROLES);
+}
+
+/**
+ * Peut-on (ré)exécuter un cas de test ? Un verdict déjà rendu n'est révisable
+ * que par un rôle qui pilote la campagne (chef de test, lead…). Un testeur ne
+ * rejoue pas un cas déjà jugé : son lien « Exécuter » disparaît.
+ */
+export function canExecuteTest(verdict: Verdict): boolean {
+  return canManageOperational() && (canManageCampaign() || verdict === "NOT_RUN");
 }
 
 /** Rôles autorisés à paramétrer les référentiels / règles métier (seuls à avoir la page). */

@@ -1,5 +1,6 @@
 import pool from '../config/database.js';
 import { paginate } from './helpers/paginate.js';
+import { versionsByIds } from './releases.js';
 
 async function attachTestLeadIds(rows, client) {
   if (!rows || rows.length === 0) return rows;
@@ -22,9 +23,12 @@ async function attachTestLeadIds(rows, client) {
     if (!nameMap[row.project_id]) nameMap[row.project_id] = [];
     nameMap[row.project_id].push(nameOf(row));
   }
+  // Numero de la version cible (releases.version), pour l'affichage.
+  const versions = await versionsByIds(rows.map((r) => r.target_release_id), client);
   for (const row of rows) {
     row.test_lead_ids = map[row.id] || [];
     row.test_lead_names = nameMap[row.id] || [];
+    row.target_version = versions.get(row.target_release_id) ?? null;
   }
   return rows;
 }
@@ -98,10 +102,12 @@ export async function create(data, client = null) {
   const c = client || pool;
   const result = await c.query(
     `INSERT INTO projects (name, description, start_date, end_date, created_by, product_id,
-       description_audio_data, description_audio_type, description_transcription, description_duration_seconds)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+       description_audio_data, description_audio_type, description_transcription, description_duration_seconds,
+       target_release_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
     [data.name, data.description || null, data.start_date || null, data.end_date || null, data.created_by, data.product_id || null,
-     data.description_audio_data || null, data.description_audio_type || null, data.description_transcription || null, data.description_duration_seconds || null]
+     data.description_audio_data || null, data.description_audio_type || null, data.description_transcription || null, data.description_duration_seconds || null,
+     data.target_release_id || null]
   );
   const project = result.rows[0];
   if (data.test_lead_ids && data.test_lead_ids.length > 0) {
@@ -114,7 +120,8 @@ export async function create(data, client = null) {
 export async function update(id, data, client = null) {
   const c = client || pool;
   const allowedFields = ['name', 'description', 'start_date', 'end_date', 'is_archived', 'product_id',
-    'description_audio_data', 'description_audio_type', 'description_transcription', 'description_duration_seconds'];
+    'description_audio_data', 'description_audio_type', 'description_transcription', 'description_duration_seconds',
+    'target_release_id'];
   const sets = [];
   const values = [];
   let idx = 1;

@@ -1,12 +1,17 @@
-import { createFileRoute, Link, notFound, Outlet, useMatches } from "@tanstack/react-router";
-import { ArrowLeft, ShieldCheck, Users, GitBranch } from "lucide-react";
-import { AppShell } from "@/components/dhi/AppShell";
 import {
-  HealthBadge,
-  Panel,
-  QualityBar,
-  ScoreValue,
-} from "@/components/dhi/indicators";
+  createFileRoute,
+  Link,
+  notFound,
+  Outlet,
+  useMatches,
+  useNavigate,
+} from "@tanstack/react-router";
+import { Plus, ShieldCheck, Users, GitBranch } from "lucide-react";
+import { useState } from "react";
+import { AppShell } from "@/components/dhi/AppShell";
+import { HealthBadge, Panel, QualityBar, ScoreValue } from "@/components/dhi/indicators";
+import { ProductQuickView } from "@/components/dhi/ProductQuickView";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -16,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { loadSnapshot, productScore, useStore } from "@/lib/dhi-store";
+import { projectProgress } from "@/lib/progress";
 import {
   PROJECT_STATUS_LABEL,
   SCORE_LABELS,
@@ -26,6 +32,8 @@ import {
 import { productTabs } from "@/lib/dhi-nav";
 import { useI18n } from "@/lib/i18n";
 import { getUser, productVisibleTo } from "@/lib/access";
+import { isInteractiveClick } from "@/lib/clickable-row";
+import { canCreateProject } from "@/lib/role-protection";
 import { ProductAccessDenied } from "@/components/dhi/AccessDenied";
 
 export const Route = createFileRoute("/produits/$productId")({
@@ -50,6 +58,8 @@ export const Route = createFileRoute("/produits/$productId")({
 function ProductDetail() {
   const { productId } = Route.useParams();
   const { t } = useI18n();
+  const navigate = useNavigate();
+  const [previewOpen, setPreviewOpen] = useState(false);
   const { products: allProducts, projects, features, campaigns, tests, defects } = useStore();
 
   const matches = useMatches();
@@ -78,18 +88,21 @@ function ProductDetail() {
 
   return (
     <AppShell
-      title={product.name}
+      title={
+        <button
+          type="button"
+          onClick={() => setPreviewOpen(true)}
+          className="group inline-flex max-w-full items-center gap-2 text-left"
+          title={t("pages.product_detail.quick_view_title")}
+        >
+          <span className="truncate">{product.name}</span>
+        </button>
+      }
       subtitle={`${t("common.produit")} · ${product.description}`}
       breadcrumb={[t("nav.qualite"), t("nav.produits"), product.name]}
       tabs={productTabs(productId)}
+      backTo={{ to: "/produits" }}
     >
-      <Link
-        to="/produits"
-        dir="ltr"
-        className="inline-flex flex-row items-center gap-1 text-sm font-medium text-primary hover:underline"
-      >
-        <ArrowLeft className="size-4" /> {t("pages.product_detail.portfolio")}
-      </Link>
       <div className="grid gap-4 lg:grid-cols-3">
         <Panel
           title={t("pages.product_detail.identity_responsibilities")}
@@ -160,15 +173,28 @@ function ProductDetail() {
       <Panel
         title={t("pages.product_detail.product_projects")}
         actions={
-          <Link to="/projets" className="text-xs font-medium text-primary hover:underline">
-            {t("pages.product_detail.all_projects")}
-          </Link>
+          <span className="flex items-center gap-3">
+            <Link to="/projets" className="text-xs font-medium text-primary hover:underline">
+              {t("pages.product_detail.all_projects")}
+            </Link>
+            {canCreateProject() ? (
+              <Link to="/projets/ajouter" search={{ productId }}>
+                <Button size="sm">
+                  <Plus className="size-4" /> {t("pages.projects.new_project")}
+                </Button>
+              </Link>
+            ) : null}
+          </span>
         }
       >
         {prodProjects.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {t("pages.product_detail.no_projects")}{" "}
-            <Link to="/projets" className="font-medium text-primary hover:underline">
+            <Link
+              to="/projets/ajouter"
+              search={{ productId }}
+              className="font-medium text-primary hover:underline"
+            >
               {t("pages.product_detail.create_one")}
             </Link>
             .
@@ -186,7 +212,14 @@ function ProductDetail() {
             </TableHeader>
             <TableBody>
               {prodProjects.map((pr) => (
-                <TableRow key={pr.id}>
+                <TableRow
+                  key={pr.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({ to: "/projets/$projectId", params: { projectId: pr.id } });
+                  }}
+                >
                   <TableCell>
                     <Link
                       to="/projets/$projectId"
@@ -202,7 +235,7 @@ function ProductDetail() {
                   <TableCell className="num">{pr.targetVersion}</TableCell>
                   <TableCell>{PROJECT_STATUS_LABEL[pr.status]}</TableCell>
                   <TableCell className="w-40">
-                    <QualityBar value={pr.progress} neutral />
+                    <QualityBar value={projectProgress(tests, campaigns, pr.id)} neutral />
                   </TableCell>
                   <TableCell className="text-sm">{pr.manager}</TableCell>
                 </TableRow>
@@ -342,6 +375,8 @@ function ProductDetail() {
           </div>
         </Link>
       </div>
+
+      <ProductQuickView productId={product.id} open={previewOpen} onOpenChange={setPreviewOpen} />
     </AppShell>
   );
 }

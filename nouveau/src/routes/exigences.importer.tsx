@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -15,13 +15,7 @@ import { CriticalityBadge } from "@/components/dhi/indicators";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -32,7 +26,10 @@ import {
 } from "@/components/ui/table";
 import { useStore } from "@/lib/dhi-store";
 import { useI18n } from "@/lib/i18n";
+import { canCreateRequirement } from "@/lib/role-protection";
+import { getUser } from "@/lib/access";
 import { CSV_SEP } from "@/lib/test-import";
+import { IMPORT_ACCEPT, readImportCsvText } from "@/lib/import-file";
 import {
   CATEGORIES,
   REQUIREMENT_TEMPLATE_HEADERS,
@@ -49,6 +46,14 @@ import {
 } from "@/lib/api";
 
 export const Route = createFileRoute("/exigences/importer")({
+  // Pas de rendu serveur : la session vit dans le navigateur (localStorage).
+  // Rendue cote serveur, la page voyait toujours « non connecte » et le
+  // controle d'acces ne se refaisait pas ensuite dans le navigateur.
+  ssr: false,
+  beforeLoad: () => {
+    if (!getUser()) throw redirect({ to: "/login" });
+    if (!canCreateRequirement()) throw redirect({ to: "/exigences" });
+  },
   head: () => ({
     meta: [{ title: "Importer des exigences — DHI Quality Platform" }],
   }),
@@ -93,15 +98,29 @@ function ImportRequirementsPage() {
 
   const handleFilePick = async (file: File) => {
     setDone(null);
-    const text = await file.text();
-    const result = parseRequirementImport(text, productFeatures);
+    let text: string;
+    try {
+      text = await readImportCsvText(file);
+    } catch {
+      toast.error(t("common.erreur"));
+      return;
+    }
     setFileName(file.name);
+    if (!text.trim()) {
+      setRows([]);
+      setMissingColumns([]);
+      toast.error(t("pages.requirements.import_no_table"));
+      return;
+    }
+    const result = parseRequirementImport(text, productFeatures);
     setRows(result.rows);
     setMissingColumns(result.missingColumns);
   };
 
   const downloadTemplate = () => {
-    const blob = new Blob(["\uFEFF", buildRequirementTemplate()], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\uFEFF", buildRequirementTemplate()], {
+      type: "text/csv;charset=utf-8",
+    });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "modele-import-exigences.csv";
@@ -112,6 +131,12 @@ function ImportRequirementsPage() {
   const runImport = async () => {
     if (valid.length === 0) return;
     const productBackend = backendIdOf(productId);
+    if (productBackend === undefined) {
+      // Sans identifiant backend, les exigences seraient importées sans
+      // rattachement produit, silencieusement : on bloque avec un message.
+      toast.error(t("pages.requirements.import_not_saved_product"));
+      return;
+    }
     setBusy(true);
     try {
       const items = valid.map((r) => ({
@@ -120,7 +145,7 @@ function ImportRequirementsPage() {
         ...(r.category ? { category: r.category } : {}),
         status: toBackendRequirementStatus(r.status),
         priority: toBackendRequirementPriority(r.priority),
-        product_id: productBackend ?? null,
+        product_id: productBackend,
         feature_ids: r.featureIds.map((f) => backendIdOf(f)).filter((f): f is number => f != null),
       }));
 
@@ -150,7 +175,12 @@ function ImportRequirementsPage() {
     >
       <div className="panel p-6 pl-12 sm:p-8 sm:pl-16 xl:pl-20">
         <div className="-ml-12 mb-6 sm:-ml-16 xl:-ml-20">
-          <Button variant="outline" size="sm" onClick={() => navigate({ to: "/exigences" })} className="gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate({ to: "/exigences" })}
+            className="gap-2"
+          >
             <ArrowLeft className="size-4" />
             {t("nav.exigences")}
           </Button>
@@ -158,8 +188,12 @@ function ImportRequirementsPage() {
 
         <div className="max-w-5xl space-y-5">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold tracking-tight">{t("pages.requirements.import_title")}</h2>
-            <p className="text-sm text-muted-foreground">{t("pages.requirements.import_subtitle")}</p>
+            <h2 className="text-lg font-semibold tracking-tight">
+              {t("pages.requirements.import_title")}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {t("pages.requirements.import_subtitle")}
+            </p>
           </div>
 
           <div className="rounded-md border border-border bg-card p-4">
@@ -167,12 +201,14 @@ function ImportRequirementsPage() {
               <StepNumber n={1} />
               <div className="min-w-0 flex-1 space-y-3">
                 <div className="space-y-1">
-                  <Label className="text-sm font-semibold">{t("pages.requirements.import_step_product")}</Label>
+                  <Label className="text-sm font-semibold">
+                    {t("pages.requirements.import_step_product")}
+                  </Label>
                   <p className="text-xs text-muted-foreground">
                     {t("pages.requirements.import_product_hint")}
                   </p>
                 </div>
-                <Select
+                <SearchableSelect
                   value={productId}
                   onValueChange={(v) => {
                     setProductId(v);
@@ -180,18 +216,10 @@ function ImportRequirementsPage() {
                     setFileName("");
                     setMissingColumns([]);
                   }}
-                >
-                  <SelectTrigger className="w-full sm:max-w-xs">
-                    <SelectValue placeholder={t("pages.requirements.import_product")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={products.map((p) => ({ value: p.id, label: p.name }))}
+                  placeholder={t("pages.requirements.import_product")}
+                  className="w-full sm:max-w-xs"
+                />
               </div>
             </div>
           </div>
@@ -200,12 +228,14 @@ function ImportRequirementsPage() {
             <div className="flex gap-3">
               <StepNumber n={2} />
               <div className="min-w-0 flex-1 space-y-3">
-                <Label className="text-sm font-semibold">{t("pages.requirements.import_step_file")}</Label>
+                <Label className="text-sm font-semibold">
+                  {t("pages.requirements.import_step_file")}
+                </Label>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".csv,text/csv"
+                    accept={IMPORT_ACCEPT}
                     className="hidden"
                     onChange={(e) => {
                       const f = e.target.files?.[0];
@@ -233,7 +263,11 @@ function ImportRequirementsPage() {
 
                 <Collapsible>
                   <CollapsibleTrigger asChild>
-                    <Button variant="ghost" size="sm" className="-ml-2 h-7 gap-1.5 text-xs text-muted-foreground">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-2 h-7 gap-1.5 text-xs text-muted-foreground"
+                    >
                       <ChevronDown className="size-3.5" />
                       {t("pages.requirements.import_format_details")}
                     </Button>
@@ -241,20 +275,23 @@ function ImportRequirementsPage() {
                   <CollapsibleContent className="rounded-md bg-subtle/50 p-3 text-xs text-muted-foreground leading-relaxed space-y-1.5">
                     <p>
                       Colonnes :{" "}
-                      <code className="text-[11px]">{REQUIREMENT_TEMPLATE_HEADERS.join(` ${CSV_SEP} `)}</code>
+                      <code className="text-[11px]">
+                        {REQUIREMENT_TEMPLATE_HEADERS.join(` ${CSV_SEP} `)}
+                      </code>
                       {" — séparateur "}
                       <strong>{CSV_SEP}</strong>
                     </p>
                     <p>
-                      <strong>titre</strong> est obligatoire.{" "}
-                      <strong>fonctionnalites</strong> accepte plusieurs valeurs séparées par <code>|</code>{" "}
-                      et peut rester vide (exigence non rattachée).{" "}
-                      <strong>categorie</strong> : {CATEGORIES.join(", ")}.
+                      <strong>titre</strong> est obligatoire. <strong>fonctionnalites</strong>{" "}
+                      accepte plusieurs valeurs séparées par <code>|</code> et peut rester vide
+                      (exigence non rattachée). <strong>categorie</strong> : {CATEGORIES.join(", ")}
+                      .
                     </p>
                     <p>
-                      Les en-têtes sont tolérés (<code>titre</code>/<code>libelle</code>/<code>intitule</code>,{" "}
-                      <code>criticite</code> pour <code>priorite</code>, <code>etat</code> pour <code>statut</code>…).{" "}
-                      La priorité accepte basse, moyenne, haute, critique.
+                      Les en-têtes sont tolérés (<code>titre</code>/<code>libelle</code>/
+                      <code>intitule</code>, <code>criticite</code> pour <code>priorite</code>,{" "}
+                      <code>etat</code> pour <code>statut</code>…). La priorité accepte basse,
+                      moyenne, haute, critique.
                     </p>
                   </CollapsibleContent>
                 </Collapsible>
@@ -278,12 +315,21 @@ function ImportRequirementsPage() {
             <>
               <div className="flex flex-wrap items-center gap-3 text-xs">
                 <span className="font-medium">
-                  {t("pages.requirements.import_summary").replace("{valid}", String(valid.length)).replace("{invalid}", String(invalid.length))}
+                  {t("pages.requirements.import_summary")
+                    .replace("{valid}", String(valid.length))
+                    .replace("{invalid}", String(invalid.length))}
                 </span>
-                <Button size="sm" onClick={() => void runImport()} disabled={busy || valid.length === 0}>
+                <Button
+                  size="sm"
+                  onClick={() => void runImport()}
+                  disabled={busy || valid.length === 0}
+                >
                   {busy
                     ? t("pages.requirements.import_running")
-                    : t("pages.requirements.import_action").replace("{count}", String(valid.length))}
+                    : t("pages.requirements.import_action").replace(
+                        "{count}",
+                        String(valid.length),
+                      )}
                 </Button>
                 {invalid.length > 0 && (
                   <span className="text-muted-foreground">
@@ -306,12 +352,17 @@ function ImportRequirementsPage() {
                   </TableHeader>
                   <TableBody>
                     {rows.map((r) => (
-                      <TableRow key={r.line} className={r.errors.length > 0 ? "bg-danger-soft/40" : undefined}>
+                      <TableRow
+                        key={r.line}
+                        className={r.errors.length > 0 ? "bg-danger-soft/40" : undefined}
+                      >
                         <TableCell className="text-muted-foreground text-xs">{r.line}</TableCell>
                         <TableCell className="text-xs font-medium max-w-xs">
                           <span className="line-clamp-2">{r.title || "—"}</span>
                           {r.description ? (
-                            <span className="line-clamp-1 text-[11px] text-muted-foreground">{r.description}</span>
+                            <span className="line-clamp-1 text-[11px] text-muted-foreground">
+                              {r.description}
+                            </span>
                           ) : null}
                         </TableCell>
                         <TableCell className="text-xs">
@@ -332,7 +383,7 @@ function ImportRequirementsPage() {
                                 validee: "pages.requirements.status_validee",
                                 couverte: "pages.requirements.status_couverte",
                               } as const
-                            )[r.status]
+                            )[r.status],
                           )}
                         </TableCell>
                         <TableCell className="text-xs">

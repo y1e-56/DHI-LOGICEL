@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import {
   assertCanJudgeAnomaly,
   assertCanRecordVerdict,
+  assertCanReexecute,
 } from './separationGuard.js';
 
 describe('separationGuard — séparation des responsabilités (CDC §5)', () => {
@@ -64,6 +65,42 @@ describe('separationGuard — séparation des responsabilités (CDC §5)', () =>
     test('autorise l\'exécuteur quand aucun résultat n\'existe encore (null)', () => {
       assert.doesNotThrow(() =>
         assertCanRecordVerdict({ executedBy: 1, actorId: 1, currentResult: null })
+      );
+    });
+  });
+
+  describe('assertCanReexecute', () => {
+    const forbidden = (err) => err instanceof AppError && err.statusCode === 403;
+
+    test('autorise un testeur sur une exécution pas encore jugée', () => {
+      assert.doesNotThrow(() =>
+        assertCanReexecute({ actorRoles: ['tester'], currentResult: 'not_run' })
+      );
+      assert.doesNotThrow(() =>
+        assertCanReexecute({ actorRoles: ['tester'], currentResult: null })
+      );
+    });
+
+    test('bloque un testeur sur une exécution terminée (403)', () => {
+      for (const currentResult of ['passed', 'failed', 'blocked', 'skipped']) {
+        assert.throws(
+          () => assertCanReexecute({ actorRoles: ['tester'], currentResult }),
+          forbidden
+        );
+      }
+    });
+
+    test('autorise les responsables de campagne à réviser une exécution terminée', () => {
+      for (const role of ['admin', 'chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet']) {
+        assert.doesNotThrow(() =>
+          assertCanReexecute({ actorRoles: [role], currentResult: 'passed' })
+        );
+      }
+    });
+
+    test('un testeur qui a aussi un rôle de pilotage garde la main', () => {
+      assert.doesNotThrow(() =>
+        assertCanReexecute({ actorRoles: ['tester', 'chef_testeur'], currentResult: 'failed' })
       );
     });
   });

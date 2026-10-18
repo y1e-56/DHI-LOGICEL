@@ -1,4 +1,4 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/dhi/AppShell";
 import { CriticalityBadge, VerdictBadge } from "@/components/dhi/indicators";
 import {
@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { products as seedProducts } from "@/lib/dhi-data";
 import { productTabs } from "@/lib/dhi-nav";
 import { useI18n } from "@/lib/i18n";
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/produits/$productId/tests")({
 function ProductTests() {
   const { productId } = Route.useParams();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { products, campaigns, tests } = useStore();
   const product = products.find((p) => p.id === productId);
 
@@ -40,7 +42,12 @@ function ProductTests() {
     <AppShell
       title={product?.name ?? t("nav.product_tests")}
       subtitle={t("nav.product_tests")}
-      breadcrumb={[t("nav.qualite"), t("nav.produits"), product?.name ?? "", t("nav.product_tests")]}
+      breadcrumb={[
+        t("nav.qualite"),
+        t("nav.produits"),
+        product?.name ?? "",
+        t("nav.product_tests"),
+      ]}
       tabs={productTabs(productId)}
     >
       <div className="panel">
@@ -61,7 +68,14 @@ function ProductTests() {
             {prodTests.map((tc) => {
               const camp = campaigns.find((c) => c.id === tc.campaignId);
               return (
-                <TableRow key={tc.id}>
+                <TableRow
+                  key={tc.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({ to: "/execution/$testId", params: { testId: tc.id } });
+                  }}
+                >
                   <TableCell className="num font-medium">{tc.id}</TableCell>
                   <TableCell className="max-w-xs truncate">{tc.name}</TableCell>
                   <TableCell className="text-sm">
@@ -80,9 +94,7 @@ function ProductTests() {
                   <TableCell>
                     <CriticalityBadge level={tc.criticality} />
                   </TableCell>
-                  <TableCell className="text-sm capitalize">
-                    {tc.type.replace(/_/g, " ")}
-                  </TableCell>
+                  <TableCell className="text-sm capitalize">{tc.type.replace(/_/g, " ")}</TableCell>
                   <TableCell>
                     <VerdictBadge verdict={tc.verdict} />
                   </TableCell>

@@ -43,6 +43,11 @@ export async function authenticate(req, res, next) {
       res.status(401).json({ message: 'Utilisateur non trouvé' });
       return;
     }
+    // Un compte desactive perd aussi ses sessions en cours.
+    if (user.is_active === false) {
+      res.status(401).json({ message: 'Compte désactivé' });
+      return;
+    }
     req.user = user;
     next();
   } catch {

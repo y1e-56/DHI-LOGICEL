@@ -1,43 +1,50 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
-  ArrowLeft,
+  Check,
   FileText,
   Image as ImageIcon,
   Plus,
   RotateCcw,
   Trash2,
   Video,
+  X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/dhi/AppShell";
+import { EvidenceDownloadButton } from "@/components/dhi/EvidenceDownloadButton";
 import { CriticalityBadge, Panel, VerdictBadge } from "@/components/dhi/indicators";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { useStore } from "@/lib/dhi-store";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { useI18n } from "@/lib/i18n";
-import { VERDICT_LABEL, SEVERITY_LABEL, type TestCase, type Verdict, type Severity } from "@/lib/dhi-data";
-import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
-import { canManageOperational } from "@/lib/role-protection";
-import { api, mapBackendTestCase, type BackendTestExecution, type BackendTestCase } from "@/lib/api";
-
+import {
+  VERDICT_LABEL,
+  SEVERITY_LABEL,
+  canReportDefect,
+  type TestCase,
+  type Verdict,
+  type Severity,
+} from "@/lib/dhi-data";
+import { canExecuteTest, canManageCampaign, canManageOperational } from "@/lib/role-protection";
+import {
+  api,
+  ApiError,
+  getEvidenceByEntity,
+  uploadEvidence,
+  deleteEvidence,
+  mapBackendTestCase,
+  type BackendEvidence,
+  type BackendTestExecution,
+  type BackendTestCase,
+} from "@/lib/api";
 
 const VERDICTS: Verdict[] = [
   "PASS",
@@ -48,12 +55,41 @@ const VERDICTS: Verdict[] = [
   "NOT_APPLICABLE",
 ];
 
+type StepState = "pass" | "fail" | "pending";
+
+type EvidenceItem = TestCase["evidence"][number];
+
+function fileKind(file: File): EvidenceItem["kind"] {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  return "log";
+}
+
+function formatFileSize(bytes: number): string {
+  return bytes > 1_000_000
+    ? `${(bytes / 1_000_000).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1000))} KB`;
+}
+
+function toEvidenceItem(proof: BackendEvidence): EvidenceItem {
+  return {
+    id: String(proof.id),
+    name: proof.file_name ?? "—",
+    size: proof.file_size ?? "",
+    kind: proof.file_type?.startsWith("image/")
+      ? "image"
+      : proof.file_type?.startsWith("video/")
+        ? "video"
+        : "log",
+  };
+}
+
 type DraftState = {
   verdict: Verdict;
   observed: string;
   comment: string;
   measuredValue: string;
-  stepPassed: boolean[];
+  stepState: StepState[];
 };
 
 type CurrentState = DraftState;
@@ -96,63 +132,125 @@ function PreconditionsPanel({ preconditions }: { preconditions: TestCase["precon
 
 function StepsListPanel({
   steps,
-  checked,
-  onToggle,
+  states,
+  onSetStep,
+  readOnly,
 }: {
   steps: TestCase["steps"];
-  checked: boolean[];
-  onToggle: (index: number, passed: boolean) => void;
+  states: StepState[];
+  onSetStep: (index: number, state: StepState) => void;
+  readOnly?: boolean;
 }) {
   const { t } = useI18n();
-  const allChecked = steps.length > 0 && checked.every(Boolean);
+  const passed = states.filter((s) => s === "pass").length;
+  const failed = states.filter((s) => s === "fail").length;
+  const pending = steps.length - passed - failed;
+  const allPassed = steps.length > 0 && pending === 0 && failed === 0;
   return (
     <Panel
       title={t("pages.execution_detail.etapes")}
       actions={
-        <button
-          type="button"
-          onClick={() => steps.forEach((_, i) => onToggle(i, !allChecked))}
-          className="text-xs font-medium text-primary hover:underline"
-        >
-          {allChecked ? t("pages.execution_detail.tout_decocher") : t("pages.execution_detail.tout_cocher")}
-        </button>
+        readOnly ? null : (
+          <button
+            type="button"
+            onClick={() => steps.forEach((_, i) => onSetStep(i, allPassed ? "pending" : "pass"))}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            {allPassed
+              ? t("pages.execution_detail.tout_reinitialiser")
+              : t("pages.execution_detail.tout_valider")}
+          </button>
+        )
       }
     >
-      <ol className="space-y-1 text-sm">
+      <ol className="space-y-1.5 text-sm">
         {steps.map((s, i) => {
-          const isChecked = !!checked[i];
+          const state = states[i] ?? "pending";
           return (
             <li
               key={i}
-              className={`flex items-start gap-2.5 rounded-md border px-3 py-2 transition-colors ${
-                isChecked
+              className={`flex items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
+                state === "pass"
                   ? "border-success/40 bg-success-soft/60"
-                  : "border-border bg-subtle/40"
+                  : state === "fail"
+                    ? "border-danger/40 bg-danger-soft/60"
+                    : "border-border bg-subtle/40"
               }`}
             >
-              <label className="flex w-full cursor-pointer items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={(e) => onToggle(i, e.target.checked)}
-                  className="mt-0.5 size-4 shrink-0 accent-success"
-                />
+              <span className="num w-5 shrink-0 text-xs text-muted-foreground">{i + 1}</span>
+              <span
+                className={`min-w-0 flex-1 ${
+                  state === "pass"
+                    ? "text-muted-foreground line-through decoration-success/60"
+                    : "text-foreground"
+                }`}
+              >
+                {s}
+              </span>
+              {readOnly ? (
                 <span
-                  className={
-                    isChecked
-                      ? "text-muted-foreground line-through decoration-success/60"
-                      : "text-foreground"
+                  className={`shrink-0 ${
+                    state === "pass"
+                      ? "text-success"
+                      : state === "fail"
+                        ? "text-danger"
+                        : "text-muted-foreground"
+                  }`}
+                  title={
+                    state === "pass"
+                      ? t("pages.execution_detail.etape_validee")
+                      : state === "fail"
+                        ? t("pages.execution_detail.etape_echouee")
+                        : t("pages.execution_detail.etape_en_attente")
                   }
                 >
-                  {i + 1}. {s}
+                  {state === "pass" ? (
+                    <Check className="size-4" />
+                  ) : state === "fail" ? (
+                    <X className="size-4" />
+                  ) : (
+                    <span className="text-xs">—</span>
+                  )}
                 </span>
-              </label>
+              ) : (
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onSetStep(i, state === "pass" ? "pending" : "pass")}
+                    title={t("pages.execution_detail.etape_validee")}
+                    aria-pressed={state === "pass"}
+                    className={`inline-flex size-7 items-center justify-center rounded-md border transition-colors ${
+                      state === "pass"
+                        ? "border-success bg-success text-success-foreground"
+                        : "border-border text-muted-foreground hover:border-success hover:text-success"
+                    }`}
+                  >
+                    <Check className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSetStep(i, state === "fail" ? "pending" : "fail")}
+                    title={t("pages.execution_detail.etape_echouee")}
+                    aria-pressed={state === "fail"}
+                    className={`inline-flex size-7 items-center justify-center rounded-md border transition-colors ${
+                      state === "fail"
+                        ? "border-danger bg-danger text-white"
+                        : "border-border text-muted-foreground hover:border-danger hover:text-danger"
+                    }`}
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              )}
             </li>
           );
         })}
       </ol>
-      <p className="mt-2 text-xs text-muted-foreground">
-        {checked.filter(Boolean).length} / {steps.length} {t("pages.execution_detail.etapes_validees")}
+      <p className="mt-3 text-xs text-muted-foreground">
+        {t("pages.execution_detail.steps_recap")
+          .replace("{passed}", String(passed))
+          .replace("{failed}", String(failed))
+          .replace("{pending}", String(pending))}
       </p>
     </Panel>
   );
@@ -176,11 +274,13 @@ function MeasuresPanel({
   measuredValue,
   verdict,
   onMeasuredValueChange,
+  readOnly,
 }: {
   expectedValue: string | undefined;
   measuredValue: string;
   verdict: Verdict;
   onMeasuredValueChange: (value: string) => void;
+  readOnly?: boolean;
 }) {
   const { t } = useI18n();
   if (!expectedValue) return null;
@@ -194,8 +294,9 @@ function MeasuresPanel({
         <div className="flex items-center justify-between gap-4">
           <dt className="text-muted-foreground">{t("pages.execution_detail.valeur_observee")}</dt>
           <input
-            className="num w-32 rounded-md border border-input bg-background px-2 py-1 text-right text-sm"
+            className="num w-32 rounded-md border border-input bg-background px-2 py-1 text-right text-sm read-only:bg-subtle read-only:text-muted-foreground"
             value={measuredValue}
+            readOnly={readOnly}
             onChange={(e) => onMeasuredValueChange(e.target.value)}
             placeholder={t("pages.execution_detail.example_unit_placeholder")}
           />
@@ -213,9 +314,11 @@ function MeasuresPanel({
 function ObservedPanel({
   observed,
   onObservedChange,
+  readOnly,
 }: {
   observed: string;
   onObservedChange: (value: string) => void;
+  readOnly?: boolean;
 }) {
   const { t } = useI18n();
   return (
@@ -223,6 +326,7 @@ function ObservedPanel({
       <Textarea
         rows={4}
         value={observed}
+        readOnly={readOnly}
         onChange={(e) => onObservedChange(e.target.value)}
         placeholder={t("pages.execution_detail.observed_placeholder")}
       />
@@ -235,19 +339,21 @@ function VerdictPickerPanel({
   comment,
   onVerdictChange,
   onCommentChange,
+  readOnly,
 }: {
   verdict: Verdict;
   comment: string;
   onVerdictChange: (v: Verdict) => void;
   onCommentChange: (value: string) => void;
+  readOnly?: boolean;
 }) {
   const { t } = useI18n();
   return (
     <Panel title={t("common.verdict")}>
       <RadioGroup
         value={verdict}
+        disabled={readOnly}
         onValueChange={(v) => onVerdictChange(v as Verdict)}
-        className="flex flex-wrap gap-4"
       >
         {VERDICTS.map((v) => (
           <div key={v} className="flex items-center gap-2">
@@ -266,6 +372,7 @@ function VerdictPickerPanel({
         rows={3}
         className="mt-1.5"
         value={comment}
+        readOnly={readOnly}
         onChange={(e) => onCommentChange(e.target.value)}
         placeholder={t("pages.execution_detail.comment_placeholder")}
       />
@@ -277,30 +384,34 @@ function EvidenceListPanel({
   evidence,
   onAddEvidence,
   onRemoveEvidence,
+  readOnly,
 }: {
   evidence: TestCase["evidence"];
   onAddEvidence: (file: File) => void;
   onRemoveEvidence: (evId: string) => void;
+  readOnly?: boolean;
 }) {
   const { t } = useI18n();
   return (
     <Panel
       title={t("pages.execution_detail.preuves")}
       actions={
-        <label className="cursor-pointer">
-          <input
-            type="file"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onAddEvidence(f);
-              e.target.value = "";
-            }}
-          />
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-            <Plus className="size-3.5" /> {t("pages.execution_detail.ajouter_preuve")}
-          </span>
-        </label>
+        readOnly ? null : (
+          <label className="cursor-pointer">
+            <input
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onAddEvidence(f);
+                e.target.value = "";
+              }}
+            />
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+              <Plus className="size-3.5" /> {t("pages.execution_detail.ajouter_preuve")}
+            </span>
+          </label>
+        )
       }
     >
       {evidence.length === 0 ? (
@@ -321,13 +432,16 @@ function EvidenceListPanel({
               )}
               <span className="min-w-0 flex-1 truncate font-medium">{e.name}</span>
               <span className="num text-xs text-muted-foreground">{e.size}</span>
-              <button
-                onClick={() => onRemoveEvidence(e.id)}
-                className="text-muted-foreground transition-colors hover:text-danger"
-                aria-label={`${t("actions.supprimer")} ${e.name}`}
-              >
-                <Trash2 className="size-4" />
-              </button>
+              <EvidenceDownloadButton id={e.id} fileName={e.name} />
+              {readOnly ? null : (
+                <button
+                  onClick={() => onRemoveEvidence(e.id)}
+                  className="text-muted-foreground transition-colors hover:text-danger"
+                  aria-label={`${t("actions.supprimer")} ${e.name}`}
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              )}
             </li>
           ))}
         </ul>
@@ -339,23 +453,36 @@ function EvidenceListPanel({
 function DefectsListPanel({
   defects,
   onCreateDefect,
+  readOnly,
+  canCreate,
 }: {
   defects: ReturnType<typeof useStore>["defects"];
   onCreateDefect: () => void;
+  readOnly?: boolean;
+  /** Verdict enregistre en echec ou bloque : seule condition de declaration. */
+  canCreate: boolean;
 }) {
   const { t } = useI18n();
+  const navigate = useNavigate();
   return (
     <Panel
       title={t("pages.execution_detail.anomalies_detectees")}
       actions={
-        <button
-          onClick={onCreateDefect}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-        >
-          <Plus className="size-3.5" /> {t("pages.execution_detail.creer_anomalie")}
-        </button>
+        readOnly || !canCreate ? null : (
+          <button
+            onClick={onCreateDefect}
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            <Plus className="size-3.5" /> {t("pages.execution_detail.creer_anomalie")}
+          </button>
+        )
       }
     >
+      {!readOnly && !canCreate ? (
+        <p className="mb-2 text-xs text-muted-foreground">
+          {t("pages.execution_detail.defect_needs_failure")}
+        </p>
+      ) : null}
       {defects.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {t("pages.execution_detail.aucune_anomalie")}
@@ -365,7 +492,11 @@ function DefectsListPanel({
           {defects.map((d) => (
             <li
               key={d.id}
-              className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm"
+              className="cursor-pointer rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm"
+              onClick={(e) => {
+                if (isInteractiveClick(e)) return;
+                void navigate({ to: "/anomalies/$defectId", params: { defectId: d.id } });
+              }}
             >
               <div className="flex items-center justify-between gap-2">
                 <p className="font-medium text-danger">
@@ -392,10 +523,14 @@ function TraceabilityPanel({
   test,
   onRestart,
   onSave,
+  readOnly,
+  readOnlyNote,
 }: {
   test: TestCase;
   onRestart: () => void;
   onSave: () => void;
+  readOnly?: boolean;
+  readOnlyNote: string;
 }) {
   const { t } = useI18n();
   return (
@@ -414,14 +549,49 @@ function TraceabilityPanel({
           <dd className="num font-medium">{test.duration ?? "—"}</dd>
         </div>
       </dl>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={onRestart}>
-          <RotateCcw className="size-4" /> {t("pages.execution_detail.recommencer")}
-        </Button>
-        <Button size="sm" onClick={onSave}>
-          {t("pages.execution_detail.enregistrer_resultat")}
-        </Button>
-      </div>
+      {readOnly ? (
+        <p className="mt-4 rounded-md bg-subtle px-3 py-2 text-xs text-muted-foreground">
+          {readOnlyNote}
+        </p>
+      ) : (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={onRestart}>
+            <RotateCcw className="size-4" /> {t("pages.execution_detail.recommencer")}
+          </Button>
+          <Button size="sm" onClick={onSave}>
+            {t("pages.execution_detail.enregistrer_resultat")}
+          </Button>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function ReassignPanel({
+  assigneeId,
+  options,
+  onReassign,
+}: {
+  assigneeId: string;
+  options: { value: string; label: string }[];
+  onReassign: (value: string) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <Panel
+      title={t("pages.execution_detail.reassign_title")}
+      actions={<VerdictBadge verdict="FAIL" />}
+    >
+      <p className="mb-3 text-xs text-muted-foreground">
+        {t("pages.execution_detail.reassign_hint")}
+      </p>
+      <Label className="mb-1.5 block text-xs">{t("pages.execution_detail.reassign_label")}</Label>
+      <SearchableSelect
+        value={assigneeId}
+        onValueChange={onReassign}
+        options={options}
+        placeholder={t("pages.execution_detail.awaiting_assign")}
+      />
     </Panel>
   );
 }
@@ -429,135 +599,61 @@ function TraceabilityPanel({
 function ExecutionPage() {
   const { testId } = Route.useParams();
   const { t } = useI18n();
-  const { tests, features, campaigns, defects, users, currentUser, updateTest, addDefect } = useStore();
+  const { tests, features, campaigns, defects, users, currentUser, updateTest, addDefect } =
+    useStore();
   const localTest = tests.find((t) => t.id === testId);
-  const [backendTest, setBackendTest] = useState<ReturnType<typeof mapBackendTestCase> | null>(null);
+  const [backendTest, setBackendTest] = useState<ReturnType<typeof mapBackendTestCase> | null>(
+    null,
+  );
+  const [executionId, setExecutionId] = useState<string | null>(null);
   useEffect(() => {
     if (!localStorage.getItem("token") || !/^\d+$/.test(testId)) return;
-    void Promise.all([
-      api<BackendTestCase>(`/test-cases/${testId}`),
-      api<BackendTestExecution[]>(`/test-executions/by-test-case/${testId}`),
-    ])
-      .then(([testCase, executions]) => setBackendTest(mapBackendTestCase(testCase, executions[0])))
-      .catch((error) => console.error("[Execution] Impossible de charger le cas backend", error));
+    void (async () => {
+      const [testCase, executions] = await Promise.all([
+        api<BackendTestCase>(`/test-cases/${testId}`),
+        api<BackendTestExecution[]>(`/test-executions/by-test-case/${testId}`),
+      ]);
+      const execution = executions[0];
+      const mapped = mapBackendTestCase(testCase, execution);
+      if (!execution) {
+        setBackendTest(mapped);
+        return;
+      }
+      setExecutionId(String(execution.id));
+      // Les preuves sont rattachees a l'execution, pas au cas de test : sans
+      // cet aller-retour, un cas non valide afficherait une liste vide apres
+      // rechargement alors que les fichiers sont bien en base.
+      const proofs = await getEvidenceByEntity("test_execution", execution.id).catch(() => null);
+      setBackendTest({
+        ...mapped,
+        evidence: (proofs ?? []).map(toEvidenceItem),
+      });
+    })().catch((error) => console.error("[Execution] Impossible de charger le cas backend", error));
   }, [testId]);
   const test = backendTest ?? localTest;
   const feature = features.find((f) => f.id === test?.featureId);
   const campaign = campaigns.find((c) => c.id === test?.campaignId);
   const linkedDefects = defects.filter((d) => d.testId === testId);
 
+  // Testeurs de la campagne resolus en ids utilisateurs : la colonne backend
+  // `assigned_to` est une reference users(id), reaffecter par nom ne serait pas
+  // persiste. Meme regle que la liste des cas de test.
+  const reassignOptions = useMemo(() => {
+    const names = new Set(campaign?.testers ?? []);
+    return users
+      .filter((user) => names.has(user.name))
+      .map((user) => ({ value: user.id, label: user.name }))
+      .filter((option) => Number.isInteger(Number(option.value)) && Number(option.value) > 0);
+  }, [campaign?.testers, users]);
+
   const [draft, setDraft] = useState<DraftState | null>(null);
-
-  if (!test) return null;
-  if (campaign && (campaign.status === "terminee" || campaign.status !== "encours" || !canManageOperational())) {
-    return <CampaignAccessDenied subject={campaign.name} />;
-  }
-  const current: CurrentState = draft ?? {
-    verdict: test.verdict,
-    observed: test.observed,
-    comment: test.comment,
-    measuredValue: test.measuredValue ?? "",
-    stepPassed: test.steps.map(() => test.verdict === "PASS"),
-  };
-
-  const toggleStep = (index: number, passed: boolean) => {
-    setDraft((d) => {
-      const base = d ?? current;
-      const next = base.stepPassed.slice();
-      next[index] = passed;
-      const allPassed = next.length > 0 && next.every(Boolean);
-      const anyFailed = next.some((v) => !v);
-      return {
-        ...base,
-        stepPassed: next,
-        verdict: allPassed ? "PASS" : anyFailed ? "FAIL" : base.verdict,
-      };
-    });
-  };
-
-  const save = async () => {
-    const now = new Date();
-    if (backendTest && campaign && /^\d+$/.test(campaign.id)) {
-      const result = ({
-        PASS: "passed",
-        PASS_WITH_RESERVATION: "passed",
-        FAIL: "failed",
-        BLOCKED: "blocked",
-        NOT_RUN: "not_run",
-        NOT_APPLICABLE: "skipped",
-      } as const)[current.verdict];
-      try {
-        await api("/test-executions", {
-          method: "POST",
-          body: JSON.stringify({
-            test_case_id: Number(test.id),
-            campaign_id: Number(campaign.id),
-            result,
-            notes: current.comment || undefined,
-            actual_behavior: current.observed || undefined,
-            expected_behavior: test.expected.join("\n") || undefined,
-          }),
-        });
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Impossible d'enregistrer l'exécution");
-        return;
-      }
-    }
-    updateTest(test.id, {
-      verdict: current.verdict,
-      observed: current.observed,
-      comment: current.comment,
-      measuredValue: current.measuredValue || undefined,
-      // Qui a execute, pas qui est affecte : l'affectation vit dans `assignedTo`
-      // et ne doit pas etre overwritten par le fait d'avoir lance le test.
-      tester: currentUser?.name ?? "—",
-      executedAt: now.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }),
-      duration: test.duration ?? "4 min 10 sec",
-    });
-    setDraft(null);
-    toast.success(
-      t("pages.execution_detail.result_saved")
-        .replace("{id}", test.id)
-        .replace("{verdict}", current.verdict),
-    );
-  };
-
-  const restart = () => {
-    updateTest(test.id, {
-      verdict: "NOT_RUN",
-      observed: "",
-      comment: "",
-      measuredValue: undefined,
-      tester: undefined,
-      executedAt: undefined,
-      duration: undefined,
-    });
-    setDraft(null);
-    toast.info(t("pages.execution_detail.execution_reset"));
-  };
-
-  const removeEvidence = (evId: string) => {
-    updateTest(test.id, { evidence: test.evidence.filter((e) => e.id !== evId) });
-    toast.success(t("pages.execution_detail.evidence_removed"));
-  };
-
-  const addEvidence = (file: File) => {
-    const size =
-      file.size > 1_000_000
-        ? `${(file.size / 1_000_000).toFixed(1)} MB`
-        : `${Math.max(1, Math.round(file.size / 1000))} KB`;
-    const kind = file.type.startsWith("image/")
-      ? ("image" as const)
-      : file.type.startsWith("video/")
-        ? ("video" as const)
-        : ("log" as const);
-    updateTest(test.id, {
-      evidence: [...test.evidence, { id: `e-${Date.now()}`, name: file.name, size, kind }],
-    });
-    toast.success(t("pages.execution_detail.evidence_added").replace("{name}", file.name));
-  };
-
-  const campaignTesters = campaign?.testers ?? [];
+  // Dernier verdict reellement enregistre pendant la session : permet de ne pas
+  // afficher d'erreur de separation des responsabilites quand l'utilisateur
+  // re-enregistre un verdict identique.
+  const lastSavedVerdict = useRef<Verdict | null>(null);
+  // Etat de la boite de creation d'anomalie. Declare ici, avec les autres hooks :
+  // place apres le `return` conditionnel ci-dessous, il rendrait le nombre de
+  // hooks variable d'un rendu a l'autre (Rules of Hooks).
   const [createOpen, setCreateOpen] = useState(false);
   const [draftAnomaly, setDraftAnomaly] = useState<{
     title: string;
@@ -574,6 +670,309 @@ function ExecutionPage() {
     assignee: "",
     developer: "",
   });
+
+  if (!test) return null;
+  // Un cas reste consultable par les membres de la campagne meme quand celle-ci
+  // n'est pas demarree : seule l'execution (verdict, etapes, preuves, resultat)
+  // est reservee aux campagnes "encours" et aux roles qui pilotent l'operationnel.
+  const readOnly =
+    campaign !== undefined && (campaign.status !== "encours" || !canManageOperational());
+  // Une fois le verdict enregistre, un testeur ne peut plus rejouer le cas : meme
+  // regle que le lien « Executer » de la liste (canExecuteTest), appliquee ici
+  // pour que l'acces par clic sur la ligne ne la contourne pas. Seuls les
+  // responsables de campagne peuvent encore modifier ou rouvrir l'execution.
+  // La declaration d'anomalie reste ouverte : elle suit un verdict FAIL.
+  // Un testeur simple n'execute que les cas qui lui sont affectes (ou ceux
+  // encore sans affectation) : meme regle que le backend.
+  const assignedToOther =
+    !canManageCampaign() &&
+    test.assignedTo != null &&
+    String(test.assignedTo) !== String(currentUser?.id ?? "");
+  const executionLocked = readOnly || assignedToOther || !canExecuteTest(test.verdict);
+  const current: CurrentState = draft ?? {
+    verdict: test.verdict,
+    observed: test.observed,
+    comment: test.comment,
+    measuredValue: test.measuredValue ?? "",
+    stepState: test.steps.map(() => (test.verdict === "PASS" ? "pass" : "pending")),
+  };
+
+  const setStep = (index: number, state: StepState) => {
+    setDraft((d) => {
+      const base = d ?? current;
+      const next = base.stepState.slice();
+      next[index] = state;
+      const allPassed = next.length > 0 && next.every((s) => s === "pass");
+      const anyFailed = next.some((s) => s === "fail");
+      return {
+        ...base,
+        stepState: next,
+        verdict: allPassed ? "PASS" : anyFailed ? "FAIL" : base.verdict,
+      };
+    });
+  };
+
+  const refreshEvidence = async (execId: string) => {
+    const proofs = await getEvidenceByEntity("test_execution", Number(execId)).catch(() => null);
+    if (!proofs) return;
+    setBackendTest((prev) => (prev ? { ...prev, evidence: proofs.map(toEvidenceItem) } : prev));
+  };
+
+  // Cree l'execution si elle n'existe pas encore puis renvoie son id. Une
+  // preuve peut etre jointe avant tout enregistrement de verdict : on cree
+  // alors en "not_run" pour ne pas figer le verdict (le meme membre pourra
+  // ensuite le saisir, la separation des responsabilites ne s'appliquant
+  // qu'une fois un resultat reel enregistre).
+  const ensureExecutionId = async (): Promise<string | null> => {
+    if (executionId) return executionId;
+    if (!(backendTest && campaign && /^\d+$/.test(campaign.id))) return null;
+    const execution = await api<BackendTestExecution>("/test-executions", {
+      method: "POST",
+      body: JSON.stringify({
+        test_case_id: Number(test.id),
+        campaign_id: Number(campaign.id),
+        result: "not_run",
+      }),
+    });
+    setExecutionId(String(execution.id));
+    return String(execution.id);
+  };
+
+  // Enregistre le verdict sur l'execution courante. On met a jour l'execution
+  // existante au lieu d'en creer une nouvelle : les preuves sont rattachees a
+  // une execution precise et la page n'affiche que la plus recente
+  // (executions[0]). Un nouveau POST a chaque enregistrement orphelinait donc
+  // les preuves deja envoyees.
+  const persistExecution = async (): Promise<string | null> => {
+    if (!(backendTest && campaign && /^\d+$/.test(campaign.id))) return null;
+    const result = (
+      {
+        PASS: "passed",
+        PASS_WITH_RESERVATION: "passed",
+        FAIL: "failed",
+        BLOCKED: "blocked",
+        NOT_RUN: "not_run",
+        NOT_APPLICABLE: "skipped",
+      } as const
+    )[current.verdict];
+    const notes = current.comment || undefined;
+    const actualBehavior = current.observed || undefined;
+    const expectedBehavior = test.expected.join("\n") || undefined;
+    if (executionId) {
+      await api<BackendTestExecution>(`/test-executions/${executionId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          result,
+          notes,
+          actual_behavior: actualBehavior,
+          expected_behavior: expectedBehavior,
+        }),
+      });
+      await refreshEvidence(executionId);
+      return executionId;
+    }
+    const execution = await api<BackendTestExecution>("/test-executions", {
+      method: "POST",
+      body: JSON.stringify({
+        test_case_id: Number(test.id),
+        campaign_id: Number(campaign.id),
+        result,
+        notes,
+        actual_behavior: actualBehavior,
+        expected_behavior: expectedBehavior,
+      }),
+    });
+    setExecutionId(String(execution.id));
+    await refreshEvidence(String(execution.id));
+    return String(execution.id);
+  };
+
+  const save = async () => {
+    const now = new Date();
+    const nextVerdict = current.verdict;
+    if (backendTest && campaign && /^\d+$/.test(campaign.id)) {
+      try {
+        await persistExecution();
+        lastSavedVerdict.current = nextVerdict;
+      } catch (error) {
+        // Re-enregistrer un verdict deja enregistre par soi-meme est refuse par
+        // la separation des responsabilites : ce n'est pas une erreur bloquante,
+        // la base est deja a jour.
+        const alreadySaved =
+          error instanceof ApiError &&
+          error.status === 403 &&
+          (lastSavedVerdict.current === nextVerdict || test.verdict === nextVerdict);
+        if (!alreadySaved) {
+          toast.error(
+            error instanceof Error ? error.message : "Impossible d'enregistrer l'exécution",
+          );
+          return;
+        }
+      }
+    }
+    updateTest(test.id, {
+      verdict: current.verdict,
+      observed: current.observed,
+      comment: current.comment,
+      measuredValue: current.measuredValue || undefined,
+      // Qui a execute, pas qui est affecte : l'affectation vit dans `assignedTo`
+      // et ne doit pas etre overwritten par le fait d'avoir lance le test.
+      tester: currentUser?.name ?? "—",
+      executedAt: now.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }),
+      duration: test.duration ?? "4 min 10 sec",
+    });
+    // L'etat backend prime sur le store local : sans cette mise a jour, la page
+    // reafficherait le verdict charge avant l'enregistrement.
+    setBackendTest((prev) =>
+      prev
+        ? {
+            ...prev,
+            verdict: current.verdict,
+            observed: current.observed,
+            comment: current.comment,
+            measuredValue: current.measuredValue || undefined,
+            tester: currentUser?.name ?? prev.tester,
+            executedAt: now.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }),
+          }
+        : prev,
+    );
+    setDraft(null);
+    toast.success(
+      t("pages.execution_detail.result_saved")
+        .replace("{id}", test.id)
+        .replace("{verdict}", current.verdict),
+    );
+  };
+
+  // Remet l'execution a « non executee ». Un verdict deja enregistre est aussi
+  // rouvert cote backend : sans cet appel, il reapparaissait au rechargement.
+  const restart = async () => {
+    if (executionId && test.verdict !== "NOT_RUN") {
+      try {
+        await api<BackendTestExecution>(`/test-executions/${executionId}`, {
+          method: "PUT",
+          body: JSON.stringify({ result: "not_run", notes: null, actual_behavior: null }),
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : t("common.erreur"));
+        return;
+      }
+      setBackendTest((prev) =>
+        prev
+          ? {
+              ...prev,
+              verdict: "NOT_RUN",
+              observed: "",
+              comment: "",
+              measuredValue: undefined,
+              executedAt: undefined,
+            }
+          : prev,
+      );
+    }
+    lastSavedVerdict.current = null;
+    updateTest(test.id, {
+      verdict: "NOT_RUN",
+      observed: "",
+      comment: "",
+      measuredValue: undefined,
+      tester: undefined,
+      executedAt: undefined,
+      duration: undefined,
+    });
+    setDraft(null);
+    toast.info(t("pages.execution_detail.execution_reset"));
+  };
+
+  // Réaffecte un cas échoué à un autre testeur et rouvre l'exécution (verdict
+  // remis à « non exécuté ») pour qu'il puisse rejouer le cas. Deux appels au
+  // store : le premier (sans verdict) persiste `assigned_to`, le second bascule
+  // le verdict local ; la réouverture backend est faite explicitement car un
+  // PUT de verdict passerait par la garde de séparation des responsabilités.
+  const reassign = async (value: string) => {
+    const user = users.find((u) => u.id === value);
+    if (!user || String(test.assignedTo ?? "") === value) return;
+    updateTest(test.id, { tester: user.name, assignedTo: Number(value) });
+    updateTest(test.id, {
+      verdict: "NOT_RUN",
+      observed: "",
+      comment: "",
+      measuredValue: undefined,
+      executedAt: undefined,
+    });
+    if (executionId) {
+      try {
+        await api<BackendTestExecution>(`/test-executions/${executionId}`, {
+          method: "PUT",
+          body: JSON.stringify({ result: "not_run", notes: null, actual_behavior: null }),
+        });
+        setBackendTest((prev) =>
+          prev
+            ? { ...prev, verdict: "NOT_RUN", observed: "", comment: "", tester: user.name }
+            : prev,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : t("pages.execution_detail.reassign_failed"),
+        );
+        return;
+      }
+    }
+    setDraft(null);
+    toast.success(t("pages.execution_detail.reassigned").replace("{name}", user.name));
+  };
+
+  const removeEvidence = async (evId: string) => {
+    // Une preuve numerique vit en base : on la supprime cote backend puis on
+    // relit la liste. Un id local (`e-...`) reste gere par le store.
+    if (backendTest && /^\d+$/.test(evId)) {
+      try {
+        await deleteEvidence(Number(evId));
+        if (executionId) await refreshEvidence(executionId);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Suppression impossible");
+        return;
+      }
+    } else {
+      updateTest(test.id, { evidence: test.evidence.filter((e) => e.id !== evId) });
+    }
+    toast.success(t("pages.execution_detail.evidence_removed"));
+  };
+
+  const addEvidence = async (file: File) => {
+    if (backendTest && campaign && /^\d+$/.test(campaign.id)) {
+      try {
+        const execId = await ensureExecutionId();
+        if (!execId) return;
+        await uploadEvidence(
+          "test_execution",
+          execId,
+          file,
+          JSON.stringify({ name: file.name, type: file.type }),
+        );
+        await refreshEvidence(execId);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Impossible d'ajouter la preuve");
+        return;
+      }
+      toast.success(t("pages.execution_detail.evidence_added").replace("{name}", file.name));
+      return;
+    }
+    updateTest(test.id, {
+      evidence: [
+        ...test.evidence,
+        {
+          id: `e-${Date.now()}`,
+          name: file.name,
+          size: formatFileSize(file.size),
+          kind: fileKind(file),
+        },
+      ],
+    });
+    toast.success(t("pages.execution_detail.evidence_added").replace("{name}", file.name));
+  };
+
+  const campaignTesters = campaign?.testers ?? [];
 
   const sevOfCriticality = (c?: TestCase["criticality"]): Severity =>
     c === "critique" || c === "haute" ? "haute" : c === "basse" ? "basse" : "moyenne";
@@ -603,6 +1002,11 @@ function ExecutionPage() {
 
   const submitAnomaly = (e: React.FormEvent) => {
     e.preventDefault();
+    // Le verdict enregistre peut avoir change depuis l'ouverture de la boite.
+    if (!canReportDefect(test.verdict)) {
+      toast.error(t("pages.anomalies.test_not_failed"));
+      return;
+    }
     if (!draftAnomaly.title.trim()) {
       toast.error(t("pages.anomalies.title_required"));
       return;
@@ -637,14 +1041,10 @@ function ExecutionPage() {
         campaign?.name ?? t("pages.execution_detail.breadcrumb"),
         test.id,
       ]}
-      actions={
-        <Link
-          to={campaign ? "/campagnes/$campaignId" : "/campagnes"}
-          params={campaign ? { campaignId: campaign.id } : {}}
-          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-        >
-          <ArrowLeft className="size-4" /> {t("actions.retour")}
-        </Link>
+      backTo={
+        campaign
+          ? { to: "/campagnes/$campaignId", params: { campaignId: campaign.id } }
+          : { to: "/campagnes" }
       }
     >
       <div className="grid gap-4 lg:grid-cols-2">
@@ -653,14 +1053,16 @@ function ExecutionPage() {
           <PreconditionsPanel preconditions={test.preconditions} />
           <StepsListPanel
             steps={test.steps}
-            checked={current.stepPassed}
-            onToggle={toggleStep}
+            states={current.stepState}
+            onSetStep={setStep}
+            readOnly={executionLocked}
           />
           <ExpectedResultsPanel expected={test.expected} />
           <MeasuresPanel
             expectedValue={test.expectedValue}
             measuredValue={current.measuredValue}
             verdict={current.verdict}
+            readOnly={executionLocked}
             onMeasuredValueChange={(value) =>
               setDraft((d) => ({ ...(d ?? current), measuredValue: value }))
             }
@@ -670,24 +1072,51 @@ function ExecutionPage() {
         <div className="space-y-4">
           <ObservedPanel
             observed={current.observed}
+            readOnly={executionLocked}
             onObservedChange={(value) => setDraft((d) => ({ ...(d ?? current), observed: value }))}
           />
           <VerdictPickerPanel
             verdict={current.verdict}
             comment={current.comment}
+            readOnly={executionLocked}
             onVerdictChange={(v) => setDraft((d) => ({ ...(d ?? current), verdict: v }))}
             onCommentChange={(value) => setDraft((d) => ({ ...(d ?? current), comment: value }))}
           />
           <EvidenceListPanel
             evidence={test.evidence}
+            readOnly={executionLocked}
             onAddEvidence={addEvidence}
             onRemoveEvidence={removeEvidence}
           />
           <DefectsListPanel
             defects={linkedDefects}
+            readOnly={readOnly}
+            canCreate={canReportDefect(test.verdict)}
             onCreateDefect={openCreateDialog}
           />
-          <TraceabilityPanel test={test} onRestart={restart} onSave={save} />
+          {test.verdict === "FAIL" &&
+          !readOnly &&
+          canManageCampaign() &&
+          reassignOptions.length > 0 ? (
+            <ReassignPanel
+              assigneeId={test.assignedTo != null ? String(test.assignedTo) : ""}
+              options={reassignOptions}
+              onReassign={(value) => void reassign(value)}
+            />
+          ) : null}
+          <TraceabilityPanel
+            test={test}
+            onRestart={() => void restart()}
+            onSave={save}
+            readOnly={executionLocked}
+            readOnlyNote={
+              readOnly
+                ? t("pages.execution_detail.read_only_note")
+                : assignedToOther
+                  ? t("pages.execution_detail.not_assigned_note")
+                  : t("pages.execution_detail.execution_done_note")
+            }
+          />
         </div>
       </div>
 
@@ -717,83 +1146,49 @@ function ExecutionPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>{t("pages.anomalies.severity")}</Label>
-                <Select
+                <SearchableSelect
                   value={draftAnomaly.severity}
                   onValueChange={(v) => setDraftAnomaly((d) => ({ ...d, severity: v as Severity }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(SEVERITY_LABEL) as Severity[]).map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {SEVERITY_LABEL[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={(Object.keys(SEVERITY_LABEL) as Severity[]).map((s) => ({
+                    value: s,
+                    label: SEVERITY_LABEL[s],
+                  }))}
+                />
               </div>
               <div className="space-y-2">
                 <Label>{t("pages.anomalies.priority")}</Label>
-                <Select
+                <SearchableSelect
                   value={draftAnomaly.priority}
                   onValueChange={(v) => setDraftAnomaly((d) => ({ ...d, priority: v as Severity }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(SEVERITY_LABEL) as Severity[]).map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {SEVERITY_LABEL[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={(Object.keys(SEVERITY_LABEL) as Severity[]).map((s) => ({
+                    value: s,
+                    label: SEVERITY_LABEL[s],
+                  }))}
+                />
               </div>
               <div className="space-y-2">
                 <Label>{t("pages.anomalies.assignee")}</Label>
-                <Select
+                <SearchableSelect
                   value={draftAnomaly.assignee}
                   onValueChange={(v) => setDraftAnomaly((d) => ({ ...d, assignee: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {assigneeOptions.length > 0 ? (
-                      assigneeOptions.map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="">{t("pages.execution_detail.awaiting_assign")}</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                  options={
+                    assigneeOptions.length > 0
+                      ? assigneeOptions.map((p) => ({ value: p, label: p }))
+                      : [{ value: "", label: t("pages.execution_detail.awaiting_assign") }]
+                  }
+                />
               </div>
               <div className="space-y-2">
                 <Label>{t("pages.anomalies.developer")}</Label>
-                <Select
+                <SearchableSelect
                   value={draftAnomaly.developer}
                   onValueChange={(v) => setDraftAnomaly((d) => ({ ...d, developer: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {devs.length > 0 ? (
-                      devs.map((p) => (
-                        <SelectItem key={p.id} value={p.name}>
-                          {p.name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="">{t("pages.execution_detail.awaiting_assign")}</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                  options={
+                    devs.length > 0
+                      ? devs.map((p) => ({ value: p.name, label: p.name }))
+                      : [{ value: "", label: t("pages.execution_detail.awaiting_assign") }]
+                  }
+                />
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 pt-2 border-t border-border">

@@ -10,6 +10,10 @@ import { DEFECT_STATUS_LABEL, type DefectStatus } from "@/lib/dhi-data";
 import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/dashboard-developpeur")({
+  // Pas de rendu serveur : la session vit dans le navigateur (localStorage).
+  // Rendue cote serveur, la page voyait toujours « non connecte » et le
+  // controle d'acces ne se refaisait pas ensuite dans le navigateur.
+  ssr: false,
   beforeLoad: () => {
     if (!hasSessionRole("developpeur")) {
       throw redirect({ to: "/" });

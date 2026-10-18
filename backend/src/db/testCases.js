@@ -45,7 +45,7 @@ export async function create(data, campaignId, client = null) {
   const result = await c.query(
     `INSERT INTO test_cases (feature_id, campaign_id, name, description, steps, expected_result, priority, type, assigned_to)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-    [data.feature_id, campaignId, data.name, data.description || null, data.steps || null, data.expected_result || null, data.priority || 'medium', data.type || 'fonctionnel', data.assigned_to ?? null]
+    [data.feature_id ?? null, campaignId, data.name, data.description || null, data.steps || null, data.expected_result || null, data.priority || 'medium', data.type || 'fonctionnel', data.assigned_to ?? null]
   );
   // On relit pour renvoyer le nom du testeur affecte, comme les autres lectures.
   if (!result.rows[0]) return null;
@@ -90,4 +90,31 @@ export async function getCampaignIdByFeature(featureId, client = null) {
   const c = client || pool;
   const result = await c.query('SELECT campaign_id FROM features WHERE id = $1', [featureId]);
   return result.rows[0] || null;
+}
+
+/**
+ * Cas de test d'une fonctionnalite ou d'une campagne, avec le resultat de leur
+ * derniere execution dans leur campagne (`latest_result`, null si jamais execute).
+ * Sert aux controles de coherence : conformite d'une fonctionnalite, cloture
+ * d'une campagne.
+ */
+export async function listWithLatestResult({ featureId = null, campaignId = null }, client = null) {
+  const c = client || pool;
+  const conditions = [];
+  const params = [];
+  if (featureId) { params.push(featureId); conditions.push(`tc.feature_id = $${params.length}`); }
+  if (campaignId) { params.push(campaignId); conditions.push(`tc.campaign_id = $${params.length}`); }
+  if (conditions.length === 0) return [];
+  const result = await c.query(
+    `SELECT tc.id, tc.feature_id, tc.campaign_id, tc.type,
+            (SELECT te.result FROM test_executions te
+              WHERE te.test_case_id = tc.id
+                AND (tc.campaign_id IS NULL OR te.campaign_id = tc.campaign_id)
+              ORDER BY te.execution_date DESC
+              LIMIT 1) AS latest_result
+     FROM test_cases tc
+     WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  return result.rows;
 }

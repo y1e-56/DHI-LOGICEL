@@ -116,10 +116,12 @@ export async function create(data, client = null) {
   const c = client || pool;
   const result = await c.query(
     `INSERT INTO features (campaign_id, name, description, priority, status, module,
-       description_audio_data, description_audio_type, description_transcription, description_duration_seconds)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+       description_audio_data, description_audio_type, description_transcription, description_duration_seconds,
+       coverage)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
     [data.campaign_id, data.name, data.description || null, data.priority || 'medium', data.status || 'pending', data.module || null,
-     data.description_audio_data || null, data.description_audio_type || null, data.description_transcription || null, data.description_duration_seconds || null]
+     data.description_audio_data || null, data.description_audio_type || null, data.description_transcription || null, data.description_duration_seconds || null,
+     data.coverage || {}]
   );
   return result.rows[0];
 }
@@ -232,10 +234,3 @@ export async function getAnomalies(featureId, client = null) {
   return result.rows;
 }
 
-export async function validateAnomaliesByFeature(featureId, client = null) {
-  const c = client || pool;
-  await c.query(
-    `UPDATE anomalies SET status = 'validated', updated_at = NOW() WHERE feature_id = $1 AND status = 'resolution_signaled'`,
-    [featureId]
-  );
-}

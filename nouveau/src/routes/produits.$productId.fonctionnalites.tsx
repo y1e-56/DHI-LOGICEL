@@ -1,4 +1,4 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import { FileText, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/dhi/AppShell";
@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { products as seedProducts, TEST_TYPES } from "@/lib/dhi-data";
 import { productTabs } from "@/lib/dhi-nav";
 import { canCreateFeature } from "@/lib/role-protection";
@@ -27,9 +28,7 @@ export const Route = createFileRoute("/produits/$productId/fonctionnalites")({
     return { name: p?.name ?? "Produit" };
   },
   head: ({ loaderData }) => ({
-    meta: [
-      { title: `Fonctionnalités · ${loaderData?.name ?? "Produit"} — DHI Quality Platform` },
-    ],
+    meta: [{ title: `Fonctionnalités · ${loaderData?.name ?? "Produit"} — DHI Quality Platform` }],
   }),
   component: ProductFeatures,
 });
@@ -43,6 +42,7 @@ const coveragePct = (f: ReturnType<typeof useStore>["features"][number]) => {
 function ProductFeatures() {
   const { productId } = Route.useParams();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { products, features } = useStore();
   const product = products.find((p) => p.id === productId);
   const [search, setSearch] = useState("");
@@ -66,7 +66,12 @@ function ProductFeatures() {
     <AppShell
       title={product?.name ?? t("nav.product_features")}
       subtitle={t("nav.product_features")}
-      breadcrumb={[t("nav.qualite"), t("nav.produits"), product?.name ?? "", t("nav.product_features")]}
+      breadcrumb={[
+        t("nav.qualite"),
+        t("nav.produits"),
+        product?.name ?? "",
+        t("nav.product_features"),
+      ]}
       tabs={productTabs(productId)}
       actions={
         canCreateFeature() ? (
@@ -105,7 +110,17 @@ function ProductFeatures() {
               const pct = coveragePct(f);
               const covered = TEST_TYPES.filter((x) => f.coverage[x.id]).length;
               return (
-                <TableRow key={f.id}>
+                <TableRow
+                  key={f.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({
+                      to: "/fonctionnalites/$featureId/modifier",
+                      params: { featureId: f.id },
+                    });
+                  }}
+                >
                   <TableCell>
                     <p className="font-medium">{f.name}</p>
                     <p className="max-w-xs truncate text-xs text-muted-foreground">
@@ -140,10 +155,7 @@ function ProductFeatures() {
             })}
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="py-8 text-center text-sm text-muted-foreground"
-                >
+                <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
                   {t("pages.features.no_features")}
                 </TableCell>
               </TableRow>

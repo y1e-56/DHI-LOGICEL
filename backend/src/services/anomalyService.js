@@ -1,6 +1,8 @@
 import { withTransaction } from '../config/database.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { assertCanJudgeAnomaly } from './separationGuard.js';
+import { assertCanReportAnomaly } from './anomalyGuard.js';
+import { assertCampaignInProgress } from './workflowGuard.js';
 import bus from '../lib/eventBus.js';
 import * as db from '../db/index.js';
 
@@ -64,6 +66,21 @@ export async function createAnomaly(data) {
   if (feature.status === 'conforme') {
     throw new AppError('Impossible de créer une anomalie sur une fonctionnalité déjà marquée conforme', 400);
   }
+
+  // Une anomalie se déclare pendant l'exécution : campagne en cours uniquement.
+  assertCampaignInProgress(await db.campaigns.findById(data.campaign_id));
+
+  // Une anomalie suit un cas de test non validé : la dernière exécution du cas
+  // dans la campagne doit être en échec ou bloquée.
+  const testCase = data.test_case_id ? await db.testCases.findById(data.test_case_id) : null;
+  const executions = testCase ? await db.testExecutions.findByTestCase(testCase.id) : [];
+  const latest = executions.find((e) => Number(e.campaign_id) === Number(data.campaign_id));
+  assertCanReportAnomaly({
+    testCase,
+    featureId: data.feature_id,
+    campaignId: data.campaign_id,
+    latestResult: latest?.result ?? null,
+  });
 
   const featureDueDate = await getFeatureDueDate(data.feature_id);
   validateCorrectionDueDate(data.correction_due_date, featureDueDate);

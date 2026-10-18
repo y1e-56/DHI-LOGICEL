@@ -1,26 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/dhi/AppShell";
+import { ProjectAccessDenied } from "@/components/dhi/AccessDenied";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { projects as seedProjects, type ProjectStatus } from "@/lib/dhi-data";
-
+import { EntityForm } from "@/lib/forms/engine";
+import { projectForm } from "@/lib/forms/project-form";
+import { getUser, projectVisibleTo } from "@/lib/access";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
 import { useI18n } from "@/lib/i18n";
-import { api, mapBackendProject, type BackendProject } from "@/lib/api";
-import { getUser, projectVisibleTo, userHasAnyRole } from "@/lib/access";
-import { ProjectAccessDenied } from "@/components/dhi/AccessDenied";
-import { useVisibleProducts } from "@/lib/use-scope";
+import { projects as seedProjects } from "@/lib/dhi-data";
 
 export const Route = createFileRoute("/projets/$projectId/modifier")({
   loader: ({ params }) => {
@@ -35,94 +23,18 @@ export const Route = createFileRoute("/projets/$projectId/modifier")({
   component: EditProjectPage,
 });
 
-type ProjectForm = {
-  name: string;
-  objective: string;
-  productId: string;
-  targetVersion: string;
-  manager: string;
-  qaLead: string;
-  status: ProjectStatus;
-  startDate: string;
-  endDate: string;
-  progress: number;
-};
-
 function EditProjectPage() {
   const { projectId } = Route.useParams();
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { products, projects, users, updateProject, replaceProjects, currentUser } = useStore();
-  const viewableProducts = useVisibleProducts(products);
-  const managerOptions = users
-    .filter((u) => u.active && userHasAnyRole(u, "chef_projet", "quality_manager", "qa_lead"))
-    .map((u) => u.name);
-  const qaOptions = users
-    .filter((u) => u.active && userHasAnyRole(u, "quality_manager", "qa_lead"))
-    .map((u) => u.name);
+  const { products, projects } = useStore();
   const project = projects.find((p) => p.id === projectId);
-
-  // Meme regle qu'a la creation : on ne se propose pas soi-meme. En edition on
-  // conserve neanmoins la valeur deja enregistree, sinon elle disparaitrait de
-  // la liste et le select afficherait un choix fantome.
-  const withoutMe = (names: string[], current: string | undefined) => {
-    const others = names.filter((n) => n !== currentUser?.name);
-    if (current && names.includes(current)) return [...others, current];
-    return others.length > 0 ? others : names;
-  };
-
-  const [form, setForm] = useState<ProjectForm>(() => ({
-    name: project?.name ?? "",
-    objective: project?.objective ?? "",
-    productId: project?.productId ?? viewableProducts[0]?.id ?? "",
-    targetVersion: project?.targetVersion ?? "",
-    manager: project?.manager ?? "",
-    qaLead: project?.qaLead ?? "",
-    status: project?.status ?? "planifie",
-    startDate: project?.startDate ?? new Date().toISOString().slice(0, 10),
-    endDate: project?.endDate ?? "",
-    progress: project?.progress ?? 0,
-  }));
+  const goToProjects = () => void navigate({ to: "/projets" });
 
   if (project && !projectVisibleTo(project, products, getUser())) {
     return <ProjectAccessDenied subject={project.name} />;
   }
   if (!project) return null;
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim() || !form.productId) {
-      toast.error(t("pages.projects.required"));
-      return;
-    }
-    if (form.startDate && form.endDate && form.startDate > form.endDate) {
-      toast.error(t("pages.projects.end_date_before_start"));
-      return;
-    }
-    if (!localStorage.getItem("token") || !/^\d+$/.test(project.id)) {
-      updateProject(project.id, form);
-      toast.success(`${t("pages.projects.updated")} « ${form.name.trim()} »`);
-      void navigate({ to: "/projets" });
-      return;
-    }
-    try {
-      const testLeadIds = [form.manager, form.qaLead]
-        .map((name) => users.find((user) => user.name === name)?.id)
-        .filter((id): id is string => !!id)
-        .map((id) => Number(id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-        .filter((id, index, all) => all.indexOf(id) === index);
-      const response = await api<{ project: BackendProject }>(`/projects/${project.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ name: form.name.trim(), description: form.objective, start_date: form.startDate || undefined, end_date: form.endDate || undefined, product_id: Number(form.productId), test_lead_ids: testLeadIds }),
-      });
-      replaceProjects(projects.map((item) => item.id === project.id ? { ...mapBackendProject(response.project), ...form, id: project.id } : item));
-      toast.success(`${t("pages.projects.updated")} « ${form.name.trim()} »`);
-      void navigate({ to: "/projets" });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("common.erreur"));
-    }
-  };
 
   return (
     <AppShell
@@ -132,184 +44,20 @@ function EditProjectPage() {
     >
       <div className="panel p-6 pl-12 sm:p-8 sm:pl-16 xl:pl-20">
         <div className="-ml-12 mb-6 sm:-ml-16 xl:-ml-20">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate({ to: "/projets" })}
-            className="gap-2"
-          >
+          <Button variant="outline" size="sm" onClick={goToProjects} className="gap-2">
             <ArrowLeft className="size-4" />
             {t("common.projets")}
           </Button>
         </div>
 
-        <form onSubmit={submit} className="max-w-4xl space-y-8">
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">
-                {t("pages.projects.edit_project_page")} — {project.name}
-              </h2>
-              <p className="text-sm text-muted-foreground">{t("pages.projects.subtitle")}</p>
-            </div>
-
-            <div className="grid gap-4">
-              <div className="grid gap-1.5">
-                <Label htmlFor="p-name">{t("pages.projects.name_label")}</Label>
-                <Input
-                  id="p-name"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder={t("pages.projects.name_placeholder")}
-                  required
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="p-obj">{t("pages.projects.objective")}</Label>
-                <Input
-                  id="p-obj"
-                  value={form.objective}
-                  onChange={(e) => setForm({ ...form, objective: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-1.5">
-                  <Label>{t("pages.projects.parent_product")}</Label>
-                  <Select
-                    value={form.productId}
-                    onValueChange={(v) => setForm({ ...form, productId: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {viewableProducts.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="p-ver">{t("pages.projects.target_version")}</Label>
-                  <Input
-                    id="p-ver"
-                    value={form.targetVersion}
-                    onChange={(e) => setForm({ ...form, targetVersion: e.target.value })}
-                    placeholder="4.12"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-1.5">
-                  <Label>{t("common.statut")}</Label>
-                  <Select
-                    value={form.status}
-                    onValueChange={(v) => setForm({ ...form, status: v as ProjectStatus })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="planifie">
-                        {t("pages.projects.status_planifie")}
-                      </SelectItem>
-                      <SelectItem value="encours">{t("pages.projects.status_encours")}</SelectItem>
-                      <SelectItem value="termine">{t("pages.projects.status_termine")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>{t("pages.projects.progress")}</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={form.progress}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        progress: Math.max(0, Math.min(100, Number(e.target.value) || 0)),
-                      })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="p-start">{t("pages.projects.start_date")}</Label>
-                  <Input
-                    id="p-start"
-                    type="date"
-                    value={form.startDate}
-                    onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="p-end">{t("pages.projects.end_date")}</Label>
-                  <Input
-                    id="p-end"
-                    type="date"
-                    value={form.endDate}
-                    onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-1.5">
-                  <Label>{t("pages.projects.manager_label")}</Label>
-                  <Select
-                    value={form.manager}
-                    onValueChange={(v) => setForm({ ...form, manager: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {withoutMe(managerOptions, form.manager).map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>{t("pages.projects.qa_lead")}</Label>
-                  <Select
-                    value={form.qaLead}
-                    onValueChange={(v) => setForm({ ...form, qaLead: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {withoutMe(qaOptions, form.qaLead).map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-4 border-t border-border">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate({ to: "/projets" })}
-              className="h-11 px-6"
-            >
-              {t("actions.annuler")}
-            </Button>
-            <Button type="submit" className="h-11 px-6">
-              {t("actions.enregistrer")}
-            </Button>
-          </div>
-        </form>
+        <EntityForm
+          schema={projectForm}
+          mode="update"
+          id={project.id}
+          entity={project}
+          onCancel={goToProjects}
+          onSaved={goToProjects}
+        />
       </div>
     </AppShell>
   );

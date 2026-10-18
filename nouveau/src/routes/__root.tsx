@@ -4,6 +4,8 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useLocation,
+  useNavigate,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -164,6 +166,25 @@ function ClientOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Controle d'acces par role, cote navigateur. Le `beforeLoad` de la racine ne
+ * s'execute pas dans le navigateur lors d'un chargement direct (lien, F5) : le
+ * rendu serveur ne voit pas la session, et la page n'etait alors jamais
+ * controlee. Meme regle, rejouee a chaque changement de page.
+ */
+function ClientAccessGuard() {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (pathname === "/login" || !loadSession()) return;
+    if (!hasAccessToPage(pathname)) {
+      const target = getRedirectForUnauthorizedAccess(pathname);
+      if (target && target !== pathname) void navigate({ to: target, replace: true });
+    }
+  }, [pathname, navigate]);
+  return null;
+}
+
 function BackendStatusBanner() {
   const { backendStatus, reloadFromBackend } = useStore();
   if (backendStatus !== "offline") return null;
@@ -191,6 +212,7 @@ function RootComponent() {
       <I18nProvider>
         <DhiStoreProvider>
           <ClientOnly>
+            <ClientAccessGuard />
             <BackendStatusBanner />
             <Outlet />
             <Toaster richColors position="bottom-right" />

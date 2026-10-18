@@ -12,7 +12,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SCORE_LABELS, SCORE_WEIGHTS, type ScoreBreakdown } from "@/lib/dhi-data";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  SCORE_LABELS,
+  SCORE_WEIGHTS,
+  type ReferentialRule,
+  type RuleMode,
+  type ScoreBreakdown,
+} from "@/lib/dhi-data";
+import {
+  RULE_MODE_LABEL,
+  RULE_SCOPES,
+  RULE_UNIT_LABEL,
+  formatThreshold,
+  thresholdLabel,
+} from "@/lib/rules";
+import { cn } from "@/lib/utils";
 
 import { useI18n } from "@/lib/i18n";
 import { useStore } from "@/lib/dhi-store";
@@ -29,6 +44,9 @@ function ReferentialsPage() {
   const { t } = useI18n();
   const { rules, updateRule } = useStore();
   const active = rules.filter((r) => r.active).length;
+  // Tri par numero (RG-2 avant RG-10), et non alphabetique.
+  const ruleNumber = (id: string) => Number(id.replace(/\D/g, "")) || 0;
+  const sortedRules = [...rules].sort((a, b) => ruleNumber(a.id) - ruleNumber(b.id));
 
   return (
     <AppShell
@@ -80,6 +98,7 @@ function ReferentialsPage() {
             {t("pages.referentials.operational_rules")}
           </h2>
         </div>
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -87,39 +106,62 @@ function ReferentialsPage() {
               <TableHead>{t("pages.referentials.domain")}</TableHead>
               <TableHead>{t("pages.referentials.rule")}</TableHead>
               <TableHead>{t("pages.referentials.threshold")}</TableHead>
+              <TableHead>{t("pages.referentials.mode")}</TableHead>
+              <TableHead>{t("pages.referentials.applies_to")}</TableHead>
               <TableHead className="text-right">{t("pages.referentials.active_short")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rules.map((r) => (
-              <TableRow key={r.id}>
+            {sortedRules.map((r) => {
+              const scope = RULE_SCOPES[r.id];
+              const editable = canManageReferentials();
+              return (
+              <TableRow key={r.id} className={cn(!r.active && "opacity-60")}>
                 <TableCell className="num font-medium">{r.id}</TableCell>
                 <TableCell className="text-sm">{r.domain}</TableCell>
                 <TableCell className="text-sm">{r.label}</TableCell>
                 <TableCell className="text-sm">
-                  {["RG-1", "RG-2", "RG-3"].includes(r.id) ? (
-                    canManageReferentials() ? (
-                      <div className="flex items-center gap-2">
-                        <Input
-                          defaultValue={r.threshold}
-                          className="h-8 w-32 text-sm"
-                          onBlur={(e) => {
-                            const v = e.target.value.trim();
-                            if (v && v !== r.threshold) {
-                              updateRule(r.id, { threshold: v });
-                              toast.success(`${r.id} seuil mis à jour : ${v}`);
-                            }
-                          }}
-                        />
-                        <span className="text-[11px] text-muted-foreground">{t("pages.referentials.editable")}</span>
-                      </div>
-                    ) : (
-                      <span className="num text-sm">{r.threshold}</span>
-                    )
+                  {editable && r.value !== null && r.value !== undefined && r.unit && r.comparator ? (
+                    <ThresholdEditor
+                      rule={r}
+                      onSave={(value) => {
+                        updateRule(r.id, { value });
+                        toast.success(
+                          t("pages.referentials.threshold_saved")
+                            .replace("{id}", r.id)
+                            .replace("{threshold}", formatThreshold({ ...r, value })),
+                        );
+                      }}
+                    />
                   ) : (
-                    <span className="num text-sm">{r.threshold}</span>
+                    <span className="num text-sm">{thresholdLabel(r)}</span>
                   )}
                 </TableCell>
+                <TableCell className="text-sm">
+                  {!scope?.control ? (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  ) : editable ? (
+                    <SearchableSelect
+                      value={r.mode ?? "warning"}
+                      onValueChange={(v) => {
+                        updateRule(r.id, { mode: v as RuleMode });
+                        toast.success(
+                          t("pages.referentials.mode_saved")
+                            .replace("{id}", r.id)
+                            .replace("{mode}", RULE_MODE_LABEL[v as RuleMode]),
+                        );
+                      }}
+                      options={(["blocking", "warning"] as RuleMode[]).map((m) => ({
+                        value: m,
+                        label: RULE_MODE_LABEL[m],
+                      }))}
+                      className="h-8 w-40 text-xs"
+                    />
+                  ) : (
+                    <ModeBadge mode={r.mode ?? "warning"} />
+                  )}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">{scope?.where ?? "—"}</TableCell>
                 <TableCell className="text-right">
                   {canManageReferentials() ? (
                     <Switch
@@ -142,10 +184,65 @@ function ReferentialsPage() {
                   )}
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
+        </div>
       </div>
     </AppShell>
+  );
+}
+
+function ModeBadge({ mode }: { mode: RuleMode }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        mode === "blocking"
+          ? "border-danger/30 bg-danger-soft text-danger"
+          : "border-warning/40 bg-warning-soft text-warning",
+      )}
+    >
+      {RULE_MODE_LABEL[mode]}
+    </span>
+  );
+}
+
+/** Seuil numerique : signe (≥ / ≤) + valeur + unite, enregistre a la sortie du champ. */
+function ThresholdEditor({
+  rule,
+  onSave,
+}: {
+  rule: ReferentialRule;
+  onSave: (value: number) => void;
+}) {
+  const { t } = useI18n();
+  const bounded = rule.unit === "percent" || rule.unit === "score";
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="num text-muted-foreground">{rule.comparator === "lte" ? "≤" : "≥"}</span>
+      <Input
+        key={`${rule.id}-${rule.value}`}
+        type="number"
+        min={0}
+        max={bounded ? 100 : undefined}
+        step={1}
+        defaultValue={rule.value ?? ""}
+        className="h-8 w-20 text-sm"
+        aria-label={`${rule.id} ${rule.label}`}
+        onBlur={(e) => {
+          const raw = e.target.value.trim();
+          const value = Number(raw);
+          if (raw === "" || !Number.isFinite(value) || value < 0 || (bounded && value > 100)) {
+            toast.error(t("pages.referentials.threshold_invalid"));
+            e.target.value = String(rule.value ?? "");
+            return;
+          }
+          if (value !== rule.value) onSave(value);
+        }}
+      />
+      <span className="text-xs text-muted-foreground">{rule.unit ? RULE_UNIT_LABEL[rule.unit] : ""}</span>
+    </div>
   );
 }

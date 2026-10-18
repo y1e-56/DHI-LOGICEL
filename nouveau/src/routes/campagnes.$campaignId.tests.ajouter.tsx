@@ -1,25 +1,30 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, FileUp, Upload } from "lucide-react";
 import { AppShell } from "@/components/dhi/AppShell";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { EntityForm } from "@/lib/forms/engine";
+import { testForm, type FormTestType, type TestFormValues } from "@/lib/forms/test-form";
+import type { FormCtl } from "@/lib/forms/types";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
-import { getUser, campaignVisibleTo, campaignTesterOptions } from "@/lib/access";
+import {
+  getUser,
+  campaignVisibleTo,
+  campaignTesterOptions,
+  findTesterOption,
+  sampleTesterEmail,
+} from "@/lib/access";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
 import { canManageCampaign } from "@/lib/role-protection";
-import { campaigns as seedCampaigns, type Criticality, type TestType } from "@/lib/dhi-data";
-import { exportCsvTemplate, exportNorTemplate, parseImportText } from "@/lib/test-import";
+import { campaigns as seedCampaigns } from "@/lib/dhi-data";
+import {
+  exportCsvTemplate,
+  exportNorTemplate,
+  parseImportText,
+  type ParsedTestRow,
+} from "@/lib/test-import";
+import { IMPORT_ACCEPT, readImportSource, rowsToCsv } from "@/lib/import-file";
 import { campaignTabs } from "@/lib/dhi-nav";
 import { useI18n } from "@/lib/i18n";
 
@@ -40,130 +45,74 @@ export const Route = createFileRoute("/campagnes/$campaignId/tests/ajouter")({
   component: AddTestPage,
 });
 
-const CRITICALITIES: Criticality[] = ["critique", "haute", "moyenne", "basse"];
-
-const TEST_TYPES: TestType[] = [
-  "fonctionnel",
-  "regression",
-  "integration",
-  "api",
-  "recette_metier",
-  "smoke",
-  "sanity",
-  "exploratoire",
-  "securite",
-  "penetration",
-  "performance",
-  "charge",
-  "endurance",
-  "volumetrie",
-  "robustesse",
-  "accessibilite",
-  "compatibilite",
-  "conformite",
-];
-
-type TestForm = {
-  name: string;
-  featureId: string;
-  criticality: Criticality;
-  type: TestType;
-  tester: string;
-  preconditions: string;
-  steps: string;
-  expected: string;
-  observed: string;
-  comment: string;
-};
-
-function splitLines(s: string): string[] {
-  return s
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-}
-
 function AddTestPage() {
   const { campaignId } = Route.useParams();
   const store = useStore();
-  const { campaigns, features, products, addTestCase, users } = store;
+  const { campaigns, features, products, users } = store;
   const { t } = useI18n();
   const navigate = useNavigate();
   const campaign = campaigns.find((c) => c.id === campaignId);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  /**
-   * Testeurs proposés dans le formulaire : uniquement les comptes actifs
-   * enregistrés dans la campagne lors de sa création (campaign.testers).
-   * Le nom seul ne suffit pas — la colonne backend est une référence
-   * users(id) — donc on conserve l'id pour l'enregistrement.
-   * Sans id numérique résolvable, le cas ne peut pas être persisté.
-   */
   const testerOptions = useMemo(
     () => campaignTesterOptions(users, campaign?.testers),
     [users, campaign?.testers],
   );
-
   const campaignFeatures = useMemo(
     () => features.filter((f) => f.productId === campaign?.productId),
     [features, campaign?.productId],
   );
 
-  const [form, setForm] = useState<TestForm>(() => ({
-    name: "",
-    featureId: campaignFeatures[0]?.id ?? "",
-    criticality: "moyenne",
-    type: "fonctionnel",
-    tester: "",
-    preconditions: "",
-    steps: "",
-    expected: "",
-    observed: "",
-    comment: "",
-  }));
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const goToCampaign = () => {
+    if (campaign)
+      void navigate({ to: "/campagnes/$campaignId", params: { campaignId: campaign.id } });
+  };
 
-  const handleImportFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onerror = () => toast.error(t("pages.campaign_detail.erreur_lecture_csv"));
-    reader.onload = () => {
-      const text = String(reader.result ?? "");
-      const rows = parseImportText(text, campaignFeatures, file.name);
-      const row = rows.find((r) => r.name.trim()) ?? rows[0];
-      if (!row) {
-        toast.error(t("pages.campaign_detail.fichier_invalide"));
-        return;
+  const handleImportFile = async (file: File, ctl: FormCtl<TestFormValues>) => {
+    let rows: ParsedTestRow[];
+    try {
+      const source = await readImportSource(file);
+      if (source.kind === "table") {
+        rows = parseImportText(rowsToCsv(source.rows), campaignFeatures, "import.csv");
+      } else if (source.kind === "csv") {
+        rows = parseImportText(source.text, campaignFeatures, "import.csv");
+      } else {
+        rows = parseImportText(source.text, campaignFeatures, "import.txt");
       }
-      // Un nom de testeur du CSV qui ne correspond à aucun compte existant ne
-      // peut pas être enregistré : on l'ignore et on le signale, plutôt que de
-      // laisser une valeur qui échouera silencieusement à l'enregistrement.
-      const importedTester = (row.tester ?? "").trim();
-      const testerMatch = testerOptions.find(
-        (o) => o.name.toLowerCase() === importedTester.toLowerCase(),
-      );
-      if (importedTester && !testerMatch) {
-        toast.error(
-          `${t("pages.campaign_detail.tester_inconnu")} : « ${importedTester} »`,
-        );
-      }
-      setForm({
-        name: row.name.trim(),
-        featureId: row.featureId || campaignFeatures[0]?.id || "",
-        criticality: row.criticality,
-        type: row.type,
-        tester: testerMatch?.name ?? "",
-        preconditions: row.preconditions.join("\n"),
-        steps: row.steps.join("\n"),
-        expected: row.expected.join("\n"),
-        observed: row.observed?.join("\n") ?? "",
-        comment: row.comment ?? "",
-      });
-      toast.success(
-        `Fichier « ${file.name} » : ${row.name.trim()}${
-          rows.length > 1 ? ` (+${rows.length - 1} autre(s))` : ""
-        }`,
-      );
-    };
-    reader.readAsText(file, "UTF-8");
+    } catch {
+      toast.error(t("pages.campaign_detail.erreur_lecture_csv"));
+      return;
+    }
+    const row = rows.find((r) => r.name.trim()) ?? rows[0];
+    if (!row) {
+      toast.error(t("pages.campaign_detail.fichier_invalide"));
+      return;
+    }
+    // Un nom de testeur du CSV qui ne correspond a aucun compte existant ne
+    // peut pas etre enregistre : on l'ignore et on le signale, plutot que de
+    // laisser une valeur qui echouera silencieusement a l'enregistrement.
+    const importedTester = (row.tester ?? "").trim();
+    const testerMatch = findTesterOption(testerOptions, users, importedTester);
+    if (importedTester && !testerMatch) {
+      toast.error(`${t("pages.campaign_detail.tester_inconnu")} : « ${importedTester} »`);
+    }
+    ctl.reset({
+      name: row.name.trim(),
+      featureId: row.featureId || campaignFeatures[0]?.id || "",
+      criticality: row.criticality,
+      type: row.type as FormTestType,
+      tester: testerMatch?.name ?? "",
+      preconditions: row.preconditions.join("\n"),
+      steps: row.steps.join("\n"),
+      expected: row.expected.join("\n"),
+      observed: row.observed?.join("\n") ?? "",
+      comment: row.comment ?? "",
+    });
+    toast.success(
+      `Fichier « ${file.name} » : ${row.name.trim()}${
+        rows.length > 1 ? ` (+${rows.length - 1} autre(s))` : ""
+      }`,
+    );
   };
 
   if (campaign && !campaignVisibleTo(campaign, products, getUser())) {
@@ -177,32 +126,6 @@ function AddTestPage() {
   }
   if (!campaign) return null;
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) {
-      toast.error(t("pages.campaign_detail.nom_test_obligatoire"));
-      return;
-    }
-    const selectedTester = testerOptions.find((o) => o.name === form.tester);
-    const id = addTestCase({
-      campaignId: campaign.id,
-      featureId: form.featureId,
-      name: form.name.trim(),
-      criticality: form.criticality,
-      type: form.type,
-      preconditions: splitLines(form.preconditions),
-      steps: splitLines(form.steps),
-      expected: splitLines(form.expected),
-      observed: form.observed.trim(),
-      comment: form.comment.trim(),
-      tester: selectedTester?.name,
-      // L'id accompagne le nom : sans lui l'affectation ne survit pas au rechargement.
-      assignedTo: selectedTester ? Number(selectedTester.id) : null,
-    });
-    toast.success(t("pages.campaign_detail.cas_test_creer").replace("{id}", id));
-    navigate({ to: "/campagnes/$campaignId", params: { campaignId: campaign.id } });
-  };
-
   return (
     <AppShell
       title={`${t("common.campagne")} : ${campaign.name}`}
@@ -211,236 +134,56 @@ function AddTestPage() {
       tabs={campaignTabs(campaignId)}
     >
       <div className="panel p-6 pl-12 sm:p-8 sm:pl-16 xl:pl-20">
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              navigate({
-                to: "/campagnes/$campaignId",
-                params: { campaignId: campaign.id },
-              })
-            }
-            className="gap-2"
-          >
-            <ArrowLeft className="size-4" />
-            {t("pages.campaigns.campaigns")}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,text/csv,.txt,text/plain"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleImportFile(f);
-              e.target.value = "";
-            }}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            className="gap-2"
-            title="Remplir le formulaire depuis un fichier CSV ou NOR (.txt)"
-          >
-            <Upload className="size-4" />
-            {t("actions.importer")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => exportCsvTemplate(campaignFeatures)}
-            className="gap-2"
-          >
-            <FileUp className="size-4" /> Modèle CSV
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => exportNorTemplate(campaignFeatures)}
-            className="gap-2"
-          >
-            <FileUp className="size-4" /> NOR (.txt)
-          </Button>
-        </div>
-
-        <form onSubmit={submit} className="max-w-4xl space-y-8">
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">
-                {t("pages.campaign_detail.ajouter_un_test")}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {t("pages.campaign_detail.ajouter_un_test")}
-              </p>
-            </div>
-
-            <div className="grid gap-4 py-2">
-              <div className="space-y-2">
-                <Label>{t("pages.campaign_detail.nom_du_test")}</Label>
-                <Input
-                  value={form.name}
-                  placeholder={t("pages.campaign_detail.nom_test_placeholder")}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>{t("pages.campaign_detail.fonctionnalite_associee")}</Label>
-                  <Select
-                    value={form.featureId}
-                    onValueChange={(v) => setForm({ ...form, featureId: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={t("pages.campaign_detail.selectionner_fonctionnalite")}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {campaignFeatures.length === 0 ? (
-                        <SelectItem value="" disabled>
-                          {t("pages.campaign_detail.aucune_fonctionnalite")}
-                        </SelectItem>
-                      ) : (
-                        campaignFeatures.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>
-                            {f.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>{t("pages.campaign_detail.testeur_referent")}</Label>
-                  <Select
-                    value={form.tester || "__none__"}
-                    onValueChange={(v) =>
-                      setForm({ ...form, tester: v === "__none__" ? "" : v })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t("pages.campaign_detail.tester_placeholder")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">
-                        {t("pages.campaign_detail.unassigned")}
-                      </SelectItem>
-                      {testerOptions.map((o) => (
-                        <SelectItem key={o.id} value={o.name}>
-                          {o.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>{t("common.criticite")}</Label>
-                  <Select
-                    value={form.criticality}
-                    onValueChange={(v) => setForm({ ...form, criticality: v as Criticality })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CRITICALITIES.map((c) => (
-                        <SelectItem key={c} value={c} className="capitalize">
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>{t("pages.campaign_detail.type_de_test")}</Label>
-                  <Select
-                    value={form.type}
-                    onValueChange={(v) => setForm({ ...form, type: v as TestType })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TEST_TYPES.map((tt) => (
-                        <SelectItem key={tt} value={tt} className="capitalize">
-                          {tt.replace(/_/g, " ")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>{t("pages.campaign_detail.preconditions_une_par_ligne")}</Label>
-                <Textarea
-                  rows={3}
-                  value={form.preconditions}
-                  placeholder={t("pages.campaign_detail.preconditions_placeholder")}
-                  onChange={(e) => setForm({ ...form, preconditions: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("pages.campaign_detail.etapes_une_par_ligne")}</Label>
-                <Textarea
-                  rows={4}
-                  value={form.steps}
-                  placeholder={t("pages.campaign_detail.etapes_placeholder")}
-                  onChange={(e) => setForm({ ...form, steps: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("pages.campaign_detail.resultats_attendus")}</Label>
-                <Textarea
-                  rows={3}
-                  value={form.expected}
-                  placeholder={t("pages.campaign_detail.expected_placeholder")}
-                  onChange={(e) => setForm({ ...form, expected: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("pages.campaign_detail.resultat_obtenu")}</Label>
-                <Textarea
-                  rows={3}
-                  value={form.observed}
-                  placeholder={t("pages.campaign_detail.resultat_obtenu_placeholder")}
-                  onChange={(e) => setForm({ ...form, observed: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("pages.campaign_detail.commentaires")}</Label>
-                <Textarea
-                  rows={3}
-                  value={form.comment}
-                  placeholder={t("pages.campaign_detail.commentaires_placeholder")}
-                  onChange={(e) => setForm({ ...form, comment: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-4 border-t border-border">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                navigate({
-                  to: "/campagnes/$campaignId",
-                  params: { campaignId: campaign.id },
-                })
-              }
-              className="h-11 px-6"
-            >
-              {t("actions.annuler")}
-            </Button>
-            <Button type="submit" className="h-11 px-6">
-              {t("pages.campaign_detail.creer_le_cas_test")}
-            </Button>
-          </div>
-        </form>
+        <EntityForm
+          schema={testForm(campaignId)}
+          mode="create"
+          onCancel={goToCampaign}
+          onSaved={goToCampaign}
+          toolbar={(ctl) => (
+            <>
+              <Button variant="outline" size="sm" onClick={goToCampaign} className="gap-2">
+                <ArrowLeft className="size-4" />
+                {t("pages.campaigns.campaigns")}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={IMPORT_ACCEPT}
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleImportFile(f, ctl);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                title="Remplir le formulaire depuis un fichier CSV, Excel, Word ou PDF (ou NOR .txt)"
+              >
+                <Upload className="size-4" />
+                {t("actions.importer")}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => exportCsvTemplate(campaignFeatures, sampleTesterEmail(testerOptions, users))}
+                className="gap-2"
+              >
+                <FileUp className="size-4" /> Modèle CSV
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => exportNorTemplate(campaignFeatures, sampleTesterEmail(testerOptions, users))}
+                className="gap-2"
+              >
+                <FileUp className="size-4" /> NOR (.txt)
+              </Button>
+            </>
+          )}
+        />
       </div>
     </AppShell>
   );

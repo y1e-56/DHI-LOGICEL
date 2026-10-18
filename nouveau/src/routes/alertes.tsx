@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { CheckCheck, Search } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { KpiCard, Panel, SeverityBadge } from "@/components/dhi/indicators";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { useStore } from "@/lib/dhi-store";
 import type { AlertType } from "@/lib/dhi-data";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
@@ -61,6 +62,7 @@ const FILTERS: { id: "all" | "unread" | AlertType; label: TranslationKey }[] = [
 function AlertsPage() {
   const { alerts, markAlertRead, markAllAlertsRead } = useStore();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<"all" | "unread" | AlertType>("all");
   const [search, setSearch] = useState("");
 
@@ -158,7 +160,18 @@ function AlertsPage() {
         ) : (
           <ul className="divide-y divide-border">
             {rows.map((a) => (
-              <li key={a.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+              <li
+                key={a.id}
+                className={cn(
+                  "flex items-start gap-3 py-3 first:pt-0 last:pb-0",
+                  a.target && "cursor-pointer",
+                )}
+                onClick={(event) => {
+                  if (isInteractiveClick(event) || !a.target) return;
+                  if (!a.read) markAlertRead(a.id);
+                  navigate({ to: a.target });
+                }}
+              >
                 <span
                   className={cn(
                     "mt-1.5 size-1.5 shrink-0 rounded-full",

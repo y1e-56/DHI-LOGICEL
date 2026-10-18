@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CheckCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -6,6 +6,7 @@ import { AppShell } from "@/components/dhi/AppShell";
 import { KpiCard, Panel } from "@/components/dhi/indicators";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { useStore } from "@/lib/dhi-store";
 import { NOTIFICATION_TYPE_LABEL, type NotificationType } from "@/lib/dhi-data";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
@@ -20,7 +21,10 @@ export const Route = createFileRoute("/notifications")({
           "Centre de notifications : tests, anomalies, campagnes, produits et décisions Go Live qui vous concernent.",
       },
       { property: "og:title", content: "Notifications — DHI Quality Platform" },
-      { property: "og:description", content: "Vos notifications personnelles, ciblées par affectation." },
+      {
+        property: "og:description",
+        content: "Vos notifications personnelles, ciblées par affectation.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -51,16 +55,14 @@ const FILTERS: { id: "all" | "unread" | NotificationType; label: TranslationKey 
 ];
 
 function NotificationsPage() {
-  const { notifications, currentUser, markNotificationRead, markAllNotificationsRead } =
-    useStore();
+  const { notifications, currentUser, markNotificationRead, markAllNotificationsRead } = useStore();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<"all" | "unread" | NotificationType>("all");
 
   const mine = notifications
     .filter((n) => !currentUser || n.userId === currentUser.id)
-    .filter((n) =>
-      filter === "all" ? true : filter === "unread" ? !n.read : n.type === filter,
-    )
+    .filter((n) => (filter === "all" ? true : filter === "unread" ? !n.read : n.type === filter))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const allMine = notifications.filter((n) => !currentUser || n.userId === currentUser.id);
@@ -71,7 +73,7 @@ function NotificationsPage() {
       title={t("pages.notifications.title")}
       subtitle={t("pages.notifications.subtitle")}
       breadcrumb={t("pages.notifications.breadcrumb")}
-      
+
       actions={
         unread > 0 ? (
           <Button
@@ -101,7 +103,9 @@ function NotificationsPage() {
         />
         <KpiCard
           label={t("pages.notifications.defects")}
-          value={allMine.filter((n) => n.type === "defect_assign" || n.type === "defect_status").length}
+          value={
+            allMine.filter((n) => n.type === "defect_assign" || n.type === "defect_status").length
+          }
           tone="danger"
           hint={t("pages.notifications.hint_defects")}
         />
@@ -141,7 +145,15 @@ function NotificationsPage() {
         ) : (
           <ul className="divide-y divide-border">
             {mine.map((n) => (
-              <li key={n.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+              <li
+                key={n.id}
+                className="flex cursor-pointer items-start gap-3 py-3 first:pt-0 last:pb-0"
+                onClick={(e) => {
+                  if (isInteractiveClick(e)) return;
+                  if (!n.read) markNotificationRead(n.id);
+                  if (n.link) navigate({ to: n.link });
+                }}
+              >
                 <span
                   className={cn(
                     "mt-1.5 size-1.5 shrink-0 rounded-full",

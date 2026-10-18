@@ -6,8 +6,13 @@ import { AppShell } from "@/components/dhi/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useStore, loadSnapshot } from "@/lib/dhi-store";
-import { products as seedProducts, type ProductDocumentType } from "@/lib/dhi-data";
+import {
+  PRODUCT_DOC_TYPE_LABEL,
+  products as seedProducts,
+  type ProductDocumentType,
+} from "@/lib/dhi-data";
 import { productTabs } from "@/lib/dhi-nav";
 import { useI18n } from "@/lib/i18n";
 import { getUser, productVisibleTo } from "@/lib/access";
@@ -37,7 +42,10 @@ function AddProductDocument() {
   const { products, addProductDocument } = useStore();
   const product = products.find((p) => p.id === productId);
 
-  const [type, setType] = useState<ProductDocumentType>("cdc");
+  // Seuls les types que le role courant peut deposer sont proposes : un type
+  // hors matrice grisait le bouton d'enregistrement sans explication.
+  const allowedTypes = (Object.keys(PRODUCT_DOC_TYPE_LABEL) as ProductDocumentType[]).filter((k) => canUploadProductDoc(k));
+  const [type, setType] = useState<ProductDocumentType>(allowedTypes[0] ?? "cdc");
   const [name, setName] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileSize, setFileSize] = useState<number | null>(null);
@@ -138,15 +146,11 @@ function AddProductDocument() {
 
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="d-type" className="text-sm font-medium">
-                  {t("pages.documents.type")}
-                </Label>
-                <Input
-                  id="d-type"
+                <Label className="text-sm font-medium">{t("pages.documents.type")}</Label>
+                <SearchableSelect
                   value={type}
-                  onChange={(e) => setType(e.target.value as ProductDocumentType)}
-                  placeholder="Ex. Cahier des charges"
-                  required
+                  onValueChange={(v) => setType(v as ProductDocumentType)}
+                  options={allowedTypes.map((value) => ({ value, label: PRODUCT_DOC_TYPE_LABEL[value] }))}
                   className="h-11"
                 />
               </div>

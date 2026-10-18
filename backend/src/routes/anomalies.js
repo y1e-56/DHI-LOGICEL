@@ -9,6 +9,9 @@ const router = Router();
 
 const requireAnomalyReporter = requireRole('chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet', 'tester');
 const requireAnomalyManager = requireRole('chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet');
+// Le testeur re-teste la correction et tranche (valider / réouvrir). Le
+// développeur corrige et signale la résolution mais ne peut pas juger la sienne.
+const requireAnomalyValidator = requireRole('chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet', 'tester');
 const requireAnomalyAssignee = requireRole('chef_testeur', 'quality_manager', 'qa_lead', 'chef_projet', 'tester', 'developer');
 
 const createSchema = z.object({
@@ -17,7 +20,8 @@ const createSchema = z.object({
   description: z.string().min(1, 'Description requise').optional(),
   reported_by: z.number().optional(),
   assigned_to: z.number().optional(),
-  test_case_id: z.number().optional(),
+  // Obligatoire : une anomalie se déclare sur un cas de test en échec ou bloqué.
+  test_case_id: z.number({ required_error: 'Une anomalie doit être rattachée à un cas de test.' }),
   correction_due_date: z.string().optional(),
   description_audio_data: z.string().max(100_000_000).optional(),
   description_audio_type: z.string().max(100).optional(),
@@ -361,7 +365,7 @@ router.patch('/:id/signal-resolution', authenticate, requireAnomalyAssignee, asy
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.patch('/:id/validate', authenticate, requireAnomalyManager, async (req, res) => {
+router.patch('/:id/validate', authenticate, requireAnomalyValidator, async (req, res) => {
   const anomaly = await anomalyService.validateAnomaly(Number(req.params.id), req.user.id);
   bus.emit('data:changed', { entity: 'anomalies' });
   res.json({ anomaly });
@@ -390,7 +394,7 @@ router.patch('/:id/validate', authenticate, requireAnomalyManager, async (req, r
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
-router.patch('/:id/reject', authenticate, requireAnomalyManager, async (req, res) => {
+router.patch('/:id/reject', authenticate, requireAnomalyValidator, async (req, res) => {
   const anomaly = await anomalyService.rejectAnomaly(Number(req.params.id), req.user.id);
   bus.emit('data:changed', { entity: 'anomalies' });
   res.json({ anomaly });

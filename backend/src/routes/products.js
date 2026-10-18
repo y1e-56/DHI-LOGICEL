@@ -17,6 +17,13 @@ const productCreateSchema = z.object({
 });
 
 const productUpdateSchema = productCreateSchema.partial();
+// Creation : la version initiale du produit est obligatoire (CDC RG-005).
+const productCreateWithVersionSchema = productCreateSchema.extend({
+  version: z.string().trim().min(1, 'Version requise').max(50),
+});
+const productUpdateWithVersionSchema = productUpdateSchema.extend({
+  version: z.string().trim().min(1, 'Version requise').max(50).optional(),
+});
 
 const releaseCreateSchema = z.object({
   version: z.string().min(1, 'Version requise').max(50),
@@ -149,7 +156,7 @@ router.get('/:id/projects', authenticate, async (req, res) => {
  *       409: { description: Un produit avec ce nom existe déjà }
  */
 router.post('/', authenticate, requireQualityAdmin, async (req, res) => {
-  const data = productCreateSchema.parse(req.body);
+  const data = productCreateWithVersionSchema.parse(req.body);
   const product = await productService.createProduct({ ...data, created_by: req.user.id });
   bus.emit('data:changed', { entity: 'products' });
   res.status(201).json({ product });
@@ -174,7 +181,7 @@ router.post('/', authenticate, requireQualityAdmin, async (req, res) => {
  *       409: { description: Un produit avec ce nom existe déjà }
  */
 router.put('/:id', authenticate, requireQualityAdmin, async (req, res) => {
-  const data = productUpdateSchema.parse(req.body);
+  const data = productUpdateWithVersionSchema.parse(req.body);
   const product = await productService.updateProduct(Number(req.params.id), data);
   bus.emit('data:changed', { entity: 'products' });
   res.json({ product });

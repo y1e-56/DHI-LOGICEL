@@ -64,6 +64,12 @@ type NestedKey<T, Prefix extends string = ""> = T extends object
 
 export type TranslationKey = NestedKey<NestedDict>;
 
+/**
+ * Separateur des traductions en liste (fils d'Ariane) : `t()` renvoie une
+ * chaine, la liste est donc jointe ici puis redecoupee par l'AppShell.
+ */
+export const BREADCRUMB_SEP = " › ";
+
 function getByPath(d: DictShape, path: string): unknown {
   const parts = path.split(".");
   let cur: unknown = d;
@@ -163,10 +169,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       const dict = DICTS[lang];
       const value = getByPath(dict, key);
       if (typeof value === "string") return value;
+      // Une liste (fil d'Ariane) renvoyait la cle brute a l'ecran.
+      if (Array.isArray(value)) return value.map(String).join(BREADCRUMB_SEP);
       if (typeof fallback === "string") return fallback;
       if (lang !== "fr") {
         const enValue = getByPath(frDict, key);
         if (typeof enValue === "string") return enValue;
+        if (Array.isArray(enValue)) return enValue.map(String).join(BREADCRUMB_SEP);
       }
       return key;
     },

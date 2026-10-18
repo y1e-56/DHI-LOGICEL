@@ -1,5 +1,13 @@
 import { loadSession, type SessionUser } from "@/lib/dhi-store";
-import type { AppRole, Campaign, Defect, PlatformUser, Product, Project } from "@/lib/dhi-data";
+import type {
+  AppRole,
+  Campaign,
+  Defect,
+  PlatformUser,
+  Product,
+  Project,
+  WatchPoint,
+} from "@/lib/dhi-data";
 
 const FULL_ACCESS_ROLES: AppRole[] = ["admin", "quality_manager", "product_owner", "qa_lead"];
 
@@ -102,6 +110,38 @@ export function visibleProducts(products: Product[], user: SessionUser | null): 
   return products.filter((p) => productVisibleTo(p, user));
 }
 
+/**
+ * Produits sur lesquels l'utilisateur travaille : ceux qu'il voit par son role
+ * produit (owner, QA…) et ceux ou il est membre d'au moins une campagne. Un
+ * chef testeur ou un testeur n'est rattache qu'aux campagnes : sans ce second
+ * critere, il ne voyait aucun produit (points a surveiller vides, formulaires
+ * sans produit).
+ */
+export function workProducts(
+  products: Product[],
+  campaigns: Campaign[],
+  user: SessionUser | null,
+): Product[] {
+  if (!user || userCanAccessAll(user)) return products;
+  return products.filter(
+    (p) =>
+      productVisibleTo(p, user) ||
+      campaigns.some((c) => c.productId === p.id && campaignVisibleTo(c, products, user)),
+  );
+}
+
+/** Un point a surveiller est visible sur un produit de travail, ou par son responsable. */
+export function watchPointVisibleTo(
+  point: WatchPoint,
+  products: Product[],
+  campaigns: Campaign[],
+  user: SessionUser | null,
+): boolean {
+  if (!user) return false;
+  if (point.owner && point.owner === user.name) return true;
+  return workProducts(products, campaigns, user).some((p) => p.id === point.productId);
+}
+
 export function visibleProjects(
   projects: Project[],
   products: Product[],
@@ -147,6 +187,29 @@ export function isTesterRole(roles: string[] | undefined, role?: string): boolea
  * été enregistrés lors de la création de la campagne (campaign.testers), pas
  * tous les testeurs de l'application.
  */
+/**
+ * Testeur de la campagne designe dans un fichier d'import, par e-mail (forme
+ * recommandee, sans ambiguite) ou par nom (anciens fichiers).
+ */
+export function findTesterOption(
+  options: { id: string; name: string }[],
+  users: PlatformUser[],
+  value: string,
+): { id: string; name: string } | undefined {
+  const wanted = value.trim().toLowerCase();
+  if (!wanted) return undefined;
+  const byEmail = users.find((u) => u.email?.toLowerCase() === wanted);
+  return options.find((o) => o.name.toLowerCase() === wanted || (byEmail && o.id === byEmail.id));
+}
+
+/** E-mail du premier testeur de la campagne, pour illustrer les modeles d'import. */
+export function sampleTesterEmail(
+  options: { id: string; name: string }[],
+  users: PlatformUser[],
+): string {
+  return users.find((u) => u.id === options[0]?.id)?.email ?? "";
+}
+
 export function campaignTesterOptions(
   users: PlatformUser[],
   campaignTesters: string[] | undefined,

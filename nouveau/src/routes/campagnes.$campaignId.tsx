@@ -1,6 +1,5 @@
 import { createFileRoute, Link, Outlet, useMatches, useNavigate } from "@tanstack/react-router";
 import {
-  ArrowLeft,
   Download,
   PlayCircle,
   Plus,
@@ -57,16 +56,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { campaignStats, loadSnapshot, useStore } from "@/lib/dhi-store";
 import { getUser, campaignVisibleTo, isTesterRole } from "@/lib/access";
-import { canManageOperational, canManageCampaign } from "@/lib/role-protection";
+import { isInteractiveClick } from "@/lib/clickable-row";
+import { canManageOperational, canManageCampaign, canExecuteTest } from "@/lib/role-protection";
 import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
 import { api, type BackendCampaign } from "@/lib/api";
 import {
@@ -77,6 +71,9 @@ import {
 } from "@/lib/dhi-data";
 import { campaignTabs } from "@/lib/dhi-nav";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
+import { exportCsvTemplate } from "@/lib/test-import";
+import { campaignCloseCheck, type CloseCheck } from "@/lib/campaign-close";
+import { cn } from "@/lib/utils";
 
 type TestStats = ReturnType<typeof campaignStats>;
 type Campaign = (typeof seedCampaigns)[number];
@@ -110,7 +107,8 @@ function exportCsv(list: TestStats["list"], campaignName: string, t: TranslateFn
       ].join(";"),
     )
     .join("\n");
-  const blob = new Blob([header + rows], { type: "text/csv" });
+  // BOM UTF-8 : accents lisibles a l'ouverture dans Excel.
+  const blob = new Blob(["﻿", header + rows], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -124,13 +122,18 @@ async function transitionCampaign(
   campaign: Campaign,
   updateCampaign: ReturnType<typeof useStore>["updateCampaign"],
   t: TranslateFn,
+  confirmIncomplete = false,
 ) {
   const nextStatus = campaign.status === "encours" ? "completed" : "in_progress";
   if (/^\d+$/.test(campaign.id) && localStorage.getItem("token")) {
     try {
       await api(`/campaigns/${campaign.id}`, {
         method: "PUT",
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({
+          status: nextStatus,
+          // Cloture d'une campagne incomplete : confirmee par l'utilisateur.
+          ...(confirmIncomplete && { confirm_incomplete: true }),
+        }),
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.erreur"));
@@ -138,7 +141,11 @@ async function transitionCampaign(
     }
   }
   updateCampaign(campaign.id, { status: nextStatus === "completed" ? "terminee" : "encours" });
-  toast.success(nextStatus === "completed" ? t("pages.campaign_detail.campagne_cloturee") : t("pages.campaign_detail.campagne_demarree"));
+  toast.success(
+    nextStatus === "completed"
+      ? t("pages.campaign_detail.campagne_cloturee")
+      : t("pages.campaign_detail.campagne_demarree"),
+  );
 }
 
 function SummaryPanel({ st }: { st: TestStats }) {
@@ -235,6 +242,7 @@ function InfoPanel({
 
 function FailedTestsPanel({ failedTests }: { failedTests: TestStats["list"] }) {
   const { t } = useI18n();
+  const navigate = useNavigate();
   return (
     <Panel title={t("pages.campaign_detail.tests_echoues")}>
       {failedTests.length === 0 ? (
@@ -246,7 +254,11 @@ function FailedTestsPanel({ failedTests }: { failedTests: TestStats["list"] }) {
           {failedTests.map((tc) => (
             <li
               key={tc.id}
-              className="flex items-start justify-between gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2"
+              className="flex cursor-pointer items-start justify-between gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2"
+              onClick={(e) => {
+                if (isInteractiveClick(e)) return;
+                void navigate({ to: "/execution/$testId", params: { testId: tc.id } });
+              }}
             >
               <div className="text-sm">
                 <p className="num font-medium text-danger">{tc.id}</p>
@@ -280,6 +292,7 @@ function CampaignTestsTable({
 }) {
   const { t } = useI18n();
   const { campaigns, updateTest, users } = useStore();
+  const navigate = useNavigate();
   const campaign = campaigns.find((c) => c.id === campaignId);
   const assignees = campaign?.testers ?? [];
   const canManage = canManageCampaign();
@@ -290,9 +303,9 @@ function CampaignTestsTable({
       // côté store, donc le retrait est bien envoye au backend.
       updateTest(testId, { tester: undefined, assignedTo: null });
       toast.success(
-        `${testId} ${t("pages.campaign_detail.reassigned")} ${
-          t("pages.campaign_detail.unassigned")
-        }.`,
+        `${testId} ${t("pages.campaign_detail.reassigned")} ${t(
+          "pages.campaign_detail.unassigned",
+        )}.`,
       );
       return;
     }
@@ -325,53 +338,93 @@ function CampaignTestsTable({
         </TableHeader>
         <TableBody>
           {list.map((tc) => (
-            <TableRow key={tc.id}>
+            <TableRow
+              key={tc.id}
+              className="cursor-pointer"
+              onClick={(e) => {
+                if (isInteractiveClick(e)) return;
+                void navigate({ to: "/execution/$testId", params: { testId: tc.id } });
+              }}
+            >
               <TableCell className="num font-medium">{tc.id}</TableCell>
               <TableCell className="max-w-xs truncate">{tc.name}</TableCell>
-              <TableCell><CriticalityBadge level={tc.criticality} /></TableCell>
+              <TableCell>
+                <CriticalityBadge level={tc.criticality} />
+              </TableCell>
               <TableCell className="text-sm capitalize">{tc.type.replace(/_/g, " ")}</TableCell>
-<TableCell>
+              <TableCell>
                 <VerdictBadge verdict={tc.verdict} />
               </TableCell>
               <TableCell className="max-w-[200px]">
                 <span
                   className="block truncate text-sm"
                   title={
-                    [tc.observed, tc.comment].filter(Boolean).join(" — ") || t("pages.campaign_detail.vide_paren")
+                    [tc.observed, tc.comment].filter(Boolean).join(" — ") ||
+                    t("pages.campaign_detail.vide_paren")
                   }
                 >
                   {tc.observed || "—"}
                 </span>
               </TableCell>
               <TableCell className="text-sm">
-                <Select value={tc.tester ?? ""} onValueChange={(v) => reassign(tc.id, v)} disabled={locked || !canManage}>
-                  <SelectTrigger className="h-8 w-40"><SelectValue placeholder="—" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">{t("pages.campaign_detail.unassigned")}</SelectItem>
-                    {assignees.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={tc.tester ?? ""}
+                  onValueChange={(v) => reassign(tc.id, v)}
+                  disabled={locked || !canManage}
+                  options={[
+                    { value: "__none__", label: t("pages.campaign_detail.unassigned") },
+                    ...assignees.map((p) => ({ value: p, label: p })),
+                  ]}
+                  placeholder="—"
+                  className="h-8 w-40"
+                />
               </TableCell>
               <TableCell className="text-right">
                 {locked ? (
-                  <span className="text-xs text-muted-foreground">{t("pages.campaign_detail.campagne_verrouillee")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("pages.campaign_detail.campagne_verrouillee")}
+                  </span>
                 ) : !canManageOperational() ? (
                   <span className="text-xs text-muted-foreground">—</span>
                 ) : campaign && campaign.status !== "encours" ? (
-                  <span className="text-xs text-muted-foreground">{t("pages.campaign_detail.campagne_non_demarree")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("pages.campaign_detail.campagne_non_demarree")}
+                  </span>
+                ) : !canExecuteTest(tc.verdict) ? (
+                  <span className="text-xs text-muted-foreground">—</span>
                 ) : (
-                  <Link to="/execution/$testId" params={{ testId: tc.id }} className="text-xs font-medium text-primary hover:underline">{t("pages.campaign_detail.executer")}</Link>
+                  <Link
+                    to="/execution/$testId"
+                    params={{ testId: tc.id }}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {t("pages.campaign_detail.executer")}
+                  </Link>
                 )}
               </TableCell>
               <TableCell>
-                {!locked && canManage ? <div className="flex justify-end gap-1">
-                  <Link to="/campagnes/$campaignId/tests/$testId/modifier" params={{ campaignId, testId: tc.id }} title={t("pages.campaign_detail.modifier_cas_test")}>
-                    <Button size="icon" variant="ghost" className="size-7"><Pencil className="size-4" /></Button>
-                  </Link>
-                  <Button size="icon" variant="ghost" className="size-7 text-danger hover:bg-danger/10 hover:text-danger" onClick={() => onDelete(tc)} title={t("pages.campaign_detail.supprimer_cas_test")}>
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div> : null}
+                {!locked && canManage ? (
+                  <div className="flex justify-end gap-1">
+                    <Link
+                      to="/campagnes/$campaignId/tests/$testId/modifier"
+                      params={{ campaignId, testId: tc.id }}
+                      title={t("pages.campaign_detail.modifier_cas_test")}
+                    >
+                      <Button size="icon" variant="ghost" className="size-7">
+                        <Pencil className="size-4" />
+                      </Button>
+                    </Link>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="size-7 text-danger hover:bg-danger/10 hover:text-danger"
+                      onClick={() => onDelete(tc)}
+                      title={t("pages.campaign_detail.supprimer_cas_test")}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                ) : null}
               </TableCell>
             </TableRow>
           ))}
@@ -459,7 +512,10 @@ function CampaignActions({
           size="sm"
           className="[&_svg]:size-3.5"
           onClick={() =>
-            navigate({ to: "/campagnes/$campaignId/tests/ajouter", params: { campaignId: campaign.id } })
+            navigate({
+              to: "/campagnes/$campaignId/tests/ajouter",
+              params: { campaignId: campaign.id },
+            })
           }
         >
           <Plus /> {t("pages.campaign_detail.ajouter_un_test")}
@@ -540,56 +596,9 @@ function CampaignActions({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <ManageMembersDialog
-        campaign={campaign}
-        open={membersOpen}
-        onOpenChange={setMembersOpen}
-      />
+      <ManageMembersDialog campaign={campaign} open={membersOpen} onOpenChange={setMembersOpen} />
     </div>
   );
-}
-
-const CSV_SEP = ";";
-const CSV_TEMPLATE_HEADERS = [
-  "nom",
-  "fonctionnalite",
-  "criticite",
-  "type",
-  "testeur",
-  "preconditions",
-  "steps",
-  "resultat_attendu",
-  "resultat_obtenu",
-  "commentaires",
-];
-
-function exportTemplateCsv(featureList: Feature[], t: TranslateFn) {
-  const header = CSV_TEMPLATE_HEADERS.join(CSV_SEP) + "\n";
-  const sampleFeature = featureList[0]
-    ? `${featureList[0].name} (${featureList[0].id})`
-    : "Authentification (f-auth)";
-  const sample = [
-    "Connexion avec mot de passe valide",
-    sampleFeature,
-    "critique",
-    "fonctionnel",
-    "Marie Martin",
-    "Utilisateur enregistré|||Page de connexion ouverte",
-    "Saisir email|||Saisir mdp demo|||Cliquer sur Se connecter",
-    "Champ email ok|||Champ mdp ok|||Redirection tableau de bord",
-    "Comportement conforme (ou à renseigner à l'exécution)",
-    "Commentaire optionnel",
-  ]
-    .map((v) => (v.includes(CSV_SEP) || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v))
-    .join(CSV_SEP);
-  const blob = new Blob([header + sample + "\n"], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "modele-import-tests-campagne.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-  toast.success(t("pages.campaign_detail.modele_csv_telecharge"));
 }
 
 /**
@@ -609,7 +618,7 @@ function ManageMembersDialog({
 }) {
   const { t } = useI18n();
   const { users, updateCampaign, campaigns, replaceCampaigns } = useStore();
-  const [testLeads, setTestLeads] = useState<Set<string>>(new Set(campaign.testLeads ?? (campaign.owner ? [campaign.owner] : [])));
+  const [testLeads, setTestLeads] = useState<Set<string>>(new Set(campaign.testLeads ?? []));
   const [testers, setTesters] = useState<Set<string>>(new Set(campaign.testers));
   const [developers, setDevelopers] = useState<Set<string>>(new Set(campaign.developers ?? []));
 
@@ -619,9 +628,17 @@ function ManageMembersDialog({
     roles: u.roles ?? [u.role],
     active: u.active,
   }));
-  const leadOptions = memberOptions.filter((o) => o.active && (o.roles ? o.roles : [o.role]).some((r) => r === "chef_testeur" || r === "quality_manager" || r === "qa_lead"));
+  const leadOptions = memberOptions.filter(
+    (o) =>
+      o.active &&
+      (o.roles ? o.roles : [o.role]).some(
+        (r) => r === "chef_testeur" || r === "quality_manager" || r === "qa_lead",
+      ),
+  );
   const testerOptions = memberOptions.filter((o) => o.active && isTesterRole(o.roles, o.role));
-  const devOptions = memberOptions.filter((o) => o.active && (o.roles ? o.roles : [o.role]).includes("developpeur"));
+  const devOptions = memberOptions.filter(
+    (o) => o.active && (o.roles ? o.roles : [o.role]).includes("developpeur"),
+  );
 
   const save = async () => {
     const leadNames = [...testLeads];
@@ -631,10 +648,26 @@ function ManageMembersDialog({
           users.filter((user) => names.has(user.name)).map((user) => Number(user.id));
         const response = await api<{ campaign: BackendCampaign }>(`/campaigns/${campaign.id}`, {
           method: "PUT",
-          body: JSON.stringify({ test_lead_ids: idsOf(testLeads), testers: idsOf(testers), developers: idsOf(developers) }),
+          body: JSON.stringify({
+            test_lead_ids: idsOf(testLeads),
+            testers: idsOf(testers),
+            developers: idsOf(developers),
+          }),
         });
         if (response.campaign) {
-          replaceCampaigns(campaigns.map((c) => (c.id === campaign.id ? { ...c, testLeads: (response.campaign.test_lead_names ?? []).map(String), owner: (response.campaign.test_lead_names ?? []).map(String)[0] ?? c.owner, testers: (response.campaign.tester_names ?? []).map(String), developers: (response.campaign.developer_names ?? []).map(String) } : c)));
+          replaceCampaigns(
+            campaigns.map((c) =>
+              c.id === campaign.id
+                ? {
+                    ...c,
+                    testLeads: (response.campaign.test_lead_names ?? []).map(String),
+                    owner: (response.campaign.test_lead_names ?? []).map(String)[0] ?? c.owner,
+                    testers: (response.campaign.tester_names ?? []).map(String),
+                    developers: (response.campaign.developer_names ?? []).map(String),
+                  }
+                : c,
+            ),
+          );
           toast.success(t("pages.add_campaign.membres_update_ok"));
           onOpenChange(false);
           return;
@@ -644,7 +677,12 @@ function ManageMembersDialog({
         return;
       }
     }
-    updateCampaign(campaign.id, { testLeads: leadNames, owner: leadNames[0] ?? campaign.owner, testers: [...testers], developers: [...developers] });
+    updateCampaign(campaign.id, {
+      testLeads: leadNames,
+      owner: leadNames[0] ?? campaign.owner,
+      testers: [...testers],
+      developers: [...developers],
+    });
     toast.success(t("pages.add_campaign.membres_update_ok"));
     onOpenChange(false);
   };
@@ -659,7 +697,9 @@ function ManageMembersDialog({
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
-              <Label className="text-sm font-medium">{t("pages.add_campaign.membres_chefs_test")}</Label>
+              <Label className="text-sm font-medium">
+                {t("pages.add_campaign.membres_chefs_test")}
+              </Label>
               <MemberMultiSelect
                 value={testLeads}
                 onChange={setTestLeads}
@@ -673,7 +713,9 @@ function ManageMembersDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label className="text-sm font-medium">{t("pages.add_campaign.membres_testeurs")}</Label>
+              <Label className="text-sm font-medium">
+                {t("pages.add_campaign.membres_testeurs")}
+              </Label>
               <MemberMultiSelect
                 value={testers}
                 onChange={setTesters}
@@ -687,7 +729,9 @@ function ManageMembersDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label className="text-sm font-medium">{t("pages.add_campaign.membres_developpeurs")}</Label>
+              <Label className="text-sm font-medium">
+                {t("pages.add_campaign.membres_developpeurs")}
+              </Label>
               <MemberMultiSelect
                 value={developers}
                 onChange={setDevelopers}
@@ -715,11 +759,23 @@ function ManageMembersDialog({
 
 function CampaignDetail() {
   const { campaignId } = Route.useParams();
-  const { campaigns, tests, products, projects, features, updateCampaign, deleteTest } = useStore();
+  const {
+    campaigns,
+    tests,
+    defects,
+    rules,
+    products,
+    projects,
+    features,
+    updateCampaign,
+    deleteTest,
+  } = useStore();
   const { t } = useI18n();
   const campaign = campaigns.find((c) => c.id === campaignId);
 
   const [toDeleteTest, setToDeleteTest] = useState<TestCase | null>(null);
+  // Verdict des regles RG-4 / RG-5 affiche avant la cloture (refus ou confirmation).
+  const [closeCheck, setCloseCheck] = useState<CloseCheck | null>(null);
 
   const matches = useMatches();
   const matchesExact = matches[matches.length - 1]?.pathname === `/campagnes/${campaignId}`;
@@ -740,8 +796,30 @@ function CampaignDetail() {
   const campaignFeatures = features.filter((f) => f.productId === campaign.productId);
 
   const onExport = () => exportCsv(st.list, campaign.name, t);
-  const onTransition = () => transitionCampaign(campaign, updateCampaign, t);
-  const onExportTemplate = () => exportTemplateCsv(campaignFeatures, t);
+  const onTransition = () => {
+    if (campaign.status === "encours") {
+      const openAnomalies = defects.filter(
+        (d) => d.campaignId === campaign.id && d.status !== "fermee",
+      ).length;
+      // Fonctionnalites de la campagne : base de RG-6 / RG-7 (couverture).
+      const campaignFeatureList = features.filter((f) => campaign.featureIds?.includes(f.id));
+      const check = campaignCloseCheck(st.list, openAnomalies, rules, campaignFeatureList);
+      if (check.refused.length > 0 || check.warnings.length > 0) {
+        setCloseCheck(check);
+        return;
+      }
+    }
+    void transitionCampaign(campaign, updateCampaign, t);
+  };
+  const confirmIncompleteClose = () => {
+    setCloseCheck(null);
+    void transitionCampaign(campaign, updateCampaign, t, true);
+  };
+  // Meme modele que la page d'import (un seul generateur pour toute l'appli).
+  const onExportTemplate = () => {
+    exportCsvTemplate(campaignFeatures);
+    toast.success(t("pages.campaign_detail.modele_csv_telecharge"));
+  };
 
   const confirmDelete = () => {
     if (!toDeleteTest) return;
@@ -756,21 +834,17 @@ function CampaignDetail() {
       subtitle={`${CAMPAIGN_STATUS_LABEL[campaign.status]} · ${st.executionRate} % ${t("pages.campaigns.executed")} · ${campaign.environment}`}
       breadcrumb={[t("nav.execution"), t("pages.campaigns.campaigns"), campaign.name]}
       tabs={campaignTabs(campaignId)}
-      actions={<CampaignActions
-            campaign={campaign}
-            st={st}
-            onExport={onExport}
-            onTransition={onTransition}
-            onExportTemplate={onExportTemplate}
-          />}
+      actions={
+        <CampaignActions
+          campaign={campaign}
+          st={st}
+          onExport={onExport}
+          onTransition={onTransition}
+          onExportTemplate={onExportTemplate}
+        />
+      }
+      backTo={{ to: "/campagnes" }}
     >
-      <Link
-        to="/campagnes"
-        dir="ltr"
-        className="inline-flex flex-row items-center gap-1 text-sm font-medium text-primary hover:underline"
-      >
-        <ArrowLeft className="size-4" /> {t("pages.campaigns.campaigns")}
-      </Link>
       <div className="grid gap-4 lg:grid-cols-3">
         <SummaryPanel st={st} />
         <InfoPanel campaign={campaign} product={product} project={project} />
@@ -782,6 +856,51 @@ function CampaignDetail() {
         onDelete={(t) => setToDeleteTest(t)}
         locked={campaign.status === "terminee"}
       />
+
+      <AlertDialog open={closeCheck !== null} onOpenChange={(o) => !o && setCloseCheck(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {closeCheck?.refused.length
+                ? t("pages.campaign_detail.close_refused_title")
+                : t("pages.campaign_detail.close_confirm_title")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {closeCheck?.refused.length
+                ? t("pages.campaign_detail.close_refused_hint")
+                : t("pages.campaign_detail.close_confirm_hint")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="space-y-1.5 text-sm">
+            {(closeCheck?.refused.length
+              ? closeCheck.refused.map((v) => v.message)
+              : (closeCheck?.warnings ?? [])
+            ).map((reason) => (
+              <li
+                key={reason}
+                className={cn(
+                  "rounded-md border px-3 py-2",
+                  closeCheck?.refused.length
+                    ? "border-danger/30 bg-danger-soft"
+                    : "border-warning/40 bg-warning-soft",
+                )}
+              >
+                {reason}
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setCloseCheck(null)}>
+              {closeCheck?.refused.length ? t("actions.fermer") : t("actions.annuler")}
+            </AlertDialogCancel>
+            {closeCheck?.refused.length ? null : (
+              <AlertDialogAction onClick={confirmIncompleteClose}>
+                {t("pages.campaign_detail.close_incomplete_confirm")}
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={toDeleteTest !== null} onOpenChange={(o) => !o && setToDeleteTest(null)}>
         <AlertDialogContent>

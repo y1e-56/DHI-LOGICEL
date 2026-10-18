@@ -9,13 +9,7 @@ import { AppShell } from "@/components/dhi/AppShell";
 import { DefectStatusBadge, KpiCard, SeverityBadge } from "@/components/dhi/indicators";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -24,7 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { DEFECT_STATUS_LABEL, SEVERITY_LABEL, type Defect, type DefectStatus, type Severity } from "@/lib/dhi-data";
+import {
+  DEFECT_STATUS_LABEL,
+  SEVERITY_LABEL,
+  type Defect,
+  type DefectStatus,
+  type Severity,
+} from "@/lib/dhi-data";
 import { useStore } from "@/lib/dhi-store";
 
 import { useI18n } from "@/lib/i18n";
@@ -42,7 +42,7 @@ function exportToCsv(rows: Defect[], t: ReturnType<typeof useI18n>["t"]) {
         `${d.id};"${d.title}";${d.severity};${d.priority};${d.status};${d.version};"${d.assignee}";${d.createdAt}`,
     )
     .join("\n");
-  const blob = new Blob([header + body], { type: "text/csv" });
+  const blob = new Blob(["﻿", header + body], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -89,32 +89,32 @@ function DefectFilters({
           className="w-64 pl-8"
         />
       </div>
-      <Select value={severityFilter} onValueChange={setSeverityFilter}>
-        <SelectTrigger className="w-40">
-          <SelectValue placeholder={t("pages.anomalies.severity")} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">{t("pages.anomalies.all_severities")}</SelectItem>
-          {(Object.keys(SEVERITY_LABEL) as Severity[]).map((s) => (
-            <SelectItem key={s} value={s}>
-              {SEVERITY_LABEL[s]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select value={statusFilter} onValueChange={setStatusFilter}>
-        <SelectTrigger className="w-44">
-          <SelectValue placeholder={t("common.statut")} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">{t("pages.anomalies.all_statuses")}</SelectItem>
-          {(Object.keys(DEFECT_STATUS_LABEL) as DefectStatus[]).map((s) => (
-            <SelectItem key={s} value={s}>
-              {DEFECT_STATUS_LABEL[s]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={severityFilter}
+        onValueChange={setSeverityFilter}
+        options={[
+          { value: "all", label: t("pages.anomalies.all_severities") },
+          ...(Object.keys(SEVERITY_LABEL) as Severity[]).map((s) => ({
+            value: s,
+            label: SEVERITY_LABEL[s],
+          })),
+        ]}
+        placeholder={t("pages.anomalies.severity")}
+        className="w-40"
+      />
+      <SearchableSelect
+        value={statusFilter}
+        onValueChange={setStatusFilter}
+        options={[
+          { value: "all", label: t("pages.anomalies.all_statuses") },
+          ...(Object.keys(DEFECT_STATUS_LABEL) as DefectStatus[]).map((s) => ({
+            value: s,
+            label: DEFECT_STATUS_LABEL[s],
+          })),
+        ]}
+        placeholder={t("common.statut")}
+        className="w-44"
+      />
       <p className="ml-auto text-sm text-muted-foreground">
         {count} {t("pages.anomalies.anomaly_count")}
       </p>
@@ -263,7 +263,9 @@ function DefectsList() {
                       : d.testId
                         ? tests.find((item) => item.id === d.testId)
                         : undefined;
-                    const campaign = direct ?? (test ? campaigns.find((item) => item.id === test.campaignId) : undefined);
+                    const campaign =
+                      direct ??
+                      (test ? campaigns.find((item) => item.id === test.campaignId) : undefined);
                     return campaign ? (
                       <Link
                         to="/campagnes/$campaignId"

@@ -78,3 +78,12 @@ export async function countCampaigns(releaseId, client = null) {
   const result = await c.query('SELECT COUNT(*)::int AS count FROM campaigns WHERE release_id = $1', [releaseId]);
   return result.rows[0].count;
 }
+
+/** Numeros de version par identifiant de release (Map id -> version). */
+export async function versionsByIds(ids, client = null) {
+  const c = client || pool;
+  const wanted = [...new Set(ids.filter((id) => id != null).map(Number))];
+  if (wanted.length === 0) return new Map();
+  const result = await c.query('SELECT id, version FROM releases WHERE id = ANY($1)', [wanted]);
+  return new Map(result.rows.map((r) => [r.id, r.version]));
+}

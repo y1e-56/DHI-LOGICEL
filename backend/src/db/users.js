@@ -55,7 +55,7 @@ export async function update(id, data, client = null) {
 
 export async function list(client = null) {
   const c = client || pool;
-  const result = await c.query("SELECT id, email, first_name, last_name, role, roles, created_at, locked_until, failed_login_attempts, date_suppression, password_reset_requested_at FROM users WHERE date_suppression IS NULL ORDER BY id");
+  const result = await c.query("SELECT id, email, first_name, last_name, role, roles, created_at, locked_until, failed_login_attempts, date_suppression, password_reset_requested_at, is_active FROM users WHERE date_suppression IS NULL ORDER BY id");
   return result.rows;
 }
 
@@ -86,7 +86,7 @@ export async function listPaginated(filters = {}, client = null) {
     conditions.push(`u.date_suppression IS NOT NULL`);
   }
 
-  const select = `u.id, u.email, u.first_name, u.last_name, u.role, u.roles, u.created_at, u.locked_until, u.failed_login_attempts, u.date_suppression, u.password_reset_requested_at`;
+  const select = `u.id, u.email, u.first_name, u.last_name, u.role, u.roles, u.created_at, u.locked_until, u.failed_login_attempts, u.date_suppression, u.password_reset_requested_at, u.is_active`;
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const from = `FROM users u`;
 
@@ -160,6 +160,19 @@ export async function block(id, lockedUntil, client = null) {
 export async function unblock(id, client = null) {
   const c = client || pool;
   const result = await c.query("UPDATE users SET failed_login_attempts = 0, locked_until = NULL, lock_count = 0 WHERE id = $1 RETURNING id", [id]);
+  return result.rows[0] || null;
+}
+
+/**
+ * Desactive ou reactive un compte. Un compte desactive reste dans la liste
+ * (contrairement a la suppression) mais ne peut plus se connecter.
+ */
+export async function setActive(id, active, client = null) {
+  const c = client || pool;
+  const result = await c.query(
+    'UPDATE users SET is_active = $2 WHERE id = $1 AND date_suppression IS NULL RETURNING id',
+    [id, active]
+  );
   return result.rows[0] || null;
 }
 

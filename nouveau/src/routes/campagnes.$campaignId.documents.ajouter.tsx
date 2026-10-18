@@ -6,13 +6,7 @@ import { AppShell } from "@/components/dhi/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useStore, loadSnapshot } from "@/lib/dhi-store";
 import {
   campaigns as seedCampaigns,
@@ -91,7 +85,12 @@ function AddCampaignDocument() {
     }
     if (localStorage.getItem("token") && /^\d+$/.test(campaignId) && file) {
       try {
-        await uploadEvidence("campaign", campaignId, file, JSON.stringify({ name: name.trim(), type: type.trim() }));
+        await uploadEvidence(
+          "campaign",
+          campaignId,
+          file,
+          JSON.stringify({ name: name.trim(), type: type.trim() }),
+        );
         toast.success(t("pages.documents.added"));
         void navigate({ to: backTo });
       } catch (error) {
@@ -145,21 +144,15 @@ function AddCampaignDocument() {
             <div className="grid gap-4">
               <div className="grid gap-2">
                 <Label className="text-sm font-medium">{t("pages.documents.type")}</Label>
-                <Select
+                <SearchableSelect
                   value={type}
                   onValueChange={(v) => setType(v as CampaignDocumentType)}
-                >
-                  <SelectTrigger className="h-11">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(CAMPAIGN_DOC_TYPE_LABEL).map((label) => (
-                      <SelectItem key={label} value={label}>
-                        {CAMPAIGN_DOC_TYPE_LABEL[label as CampaignDocumentType]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={Object.keys(CAMPAIGN_DOC_TYPE_LABEL).map((label) => ({
+                    value: label,
+                    label: CAMPAIGN_DOC_TYPE_LABEL[label as CampaignDocumentType],
+                  }))}
+                  className="h-11"
+                />
               </div>
 
               <div className="grid gap-2">

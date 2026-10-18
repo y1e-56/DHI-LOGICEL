@@ -1,3 +1,4 @@
+import { VERSION_MESSAGES, ensureRelease } from './versionService.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { withTransaction } from '../config/database.js';
 import bus from '../lib/eventBus.js';
@@ -28,7 +29,10 @@ export async function createProject(data) {
   const existing = await db.projects.findByName(data.name);
   if (existing) throw new AppError('Un projet avec ce nom existe déjà', 409);
 
-  const project = await db.projects.create(data);
+  // Version cible obligatoire : une version du produit, creee si elle est nouvelle.
+  const { target_version, ...fields } = data;
+  const target_release_id = await ensureRelease(fields.product_id, target_version, fields.created_by);
+  const project = await db.projects.create({ ...fields, target_release_id });
   bus.emit('project:created', { project, user_id: data.created_by || null });
   return project;
 }
@@ -43,7 +47,16 @@ export async function updateProject(id, data) {
       const existing = await db.projects.findByName(data.name, id);
       if (existing) throw new AppError('Un projet avec ce nom existe déjà', 409);
     }
-    const project = await db.projects.update(id, data);
+    // Version cible : resolue sur le produit du projet (nouveau ou actuel).
+    const { target_version, ...fields } = data;
+    if (target_version !== undefined) {
+      const current = await db.projects.findById(id);
+      if (!current) throw new AppError('Projet non trouvé', 404);
+      const productId = fields.product_id ?? current.product_id;
+      if (!productId) throw new AppError(VERSION_MESSAGES.noProduct, 400);
+      fields.target_release_id = await ensureRelease(productId, target_version);
+    }
+    const project = await db.projects.update(id, fields);
     if (!project) throw new AppError('Projet non trouvé', 404);
     bus.emit('project:updated', { project, project_id: id, user_id: null });
     return project;

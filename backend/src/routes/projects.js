@@ -9,6 +9,8 @@ const router = Router();
 
 const createSchema = z.object({
   name: z.string().min(1, 'Nom requis'),
+  // Version cible obligatoire (CDC RG-005) : existante ou nouvelle, pour le produit.
+  target_version: z.string().trim().min(1, 'Version cible requise').max(50),
   description: z.string().optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
@@ -22,6 +24,7 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
+  target_version: z.string().trim().min(1, 'Version cible requise').max(50).optional(),
   description: z.string().optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),

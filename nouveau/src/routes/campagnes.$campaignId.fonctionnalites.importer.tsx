@@ -29,6 +29,7 @@ import { CampaignAccessDenied } from "@/components/dhi/AccessDenied";
 import { canManageCampaign } from "@/lib/role-protection";
 import { useI18n } from "@/lib/i18n";
 import { CSV_SEP } from "@/lib/test-import";
+import { IMPORT_ACCEPT, readImportCsvText } from "@/lib/import-file";
 import {
   FEATURE_TEMPLATE_HEADERS,
   buildFeatureTemplate,
@@ -79,8 +80,21 @@ function ImportFeaturesPage() {
 
   const handleFilePick = async (file: File) => {
     setDone(null);
-    const result = parseFeatureImport(await file.text());
+    let text: string;
+    try {
+      text = await readImportCsvText(file);
+    } catch {
+      toast.error(t("common.erreur"));
+      return;
+    }
     setFileName(file.name);
+    if (!text.trim()) {
+      setRows([]);
+      setMissingColumns([]);
+      toast.error(t("pages.features.import_no_table"));
+      return;
+    }
+    const result = parseFeatureImport(text);
     setRows(result.rows);
     setMissingColumns(result.missingColumns);
   };
@@ -128,10 +142,7 @@ function ImportFeaturesPage() {
   };
 
   return (
-    <AppShell
-      title={campaign?.name ?? t("pages.features.title")}
-      breadcrumb={t("nav.campagnes")}
-    >
+    <AppShell title={campaign?.name ?? t("pages.features.title")} breadcrumb={t("nav.campagnes")}>
       <div className="panel p-6 pl-12 sm:p-8 sm:pl-16 xl:pl-20">
         <div className="-ml-12 mb-6 sm:-ml-16 xl:-ml-20">
           <Button
@@ -147,7 +158,9 @@ function ImportFeaturesPage() {
 
         <div className="max-w-5xl space-y-5">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold tracking-tight">{t("pages.features.import_title")}</h2>
+            <h2 className="text-lg font-semibold tracking-tight">
+              {t("pages.features.import_title")}
+            </h2>
             <p className="text-sm text-muted-foreground">
               {t("pages.features.import_subtitle")} {campaign?.name}
             </p>
@@ -157,12 +170,14 @@ function ImportFeaturesPage() {
             <div className="flex gap-3">
               <StepNumber n={1} />
               <div className="min-w-0 flex-1 space-y-3">
-                <Label className="text-sm font-semibold">{t("pages.features.import_step_file")}</Label>
+                <Label className="text-sm font-semibold">
+                  {t("pages.features.import_step_file")}
+                </Label>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".csv,text/csv"
+                    accept={IMPORT_ACCEPT}
                     className="hidden"
                     onChange={(e) => {
                       const f = e.target.files?.[0];
@@ -190,7 +205,11 @@ function ImportFeaturesPage() {
 
                 <Collapsible>
                   <CollapsibleTrigger asChild>
-                    <Button variant="ghost" size="sm" className="-ml-2 h-7 gap-1.5 text-xs text-muted-foreground">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-2 h-7 gap-1.5 text-xs text-muted-foreground"
+                    >
                       <ChevronDown className="size-3.5" />
                       {t("pages.features.import_format_details")}
                     </Button>
@@ -198,15 +217,18 @@ function ImportFeaturesPage() {
                   <CollapsibleContent className="rounded-md bg-subtle/50 p-3 text-xs text-muted-foreground leading-relaxed space-y-1.5">
                     <p>
                       Colonnes :{" "}
-                      <code className="text-[11px]">{FEATURE_TEMPLATE_HEADERS.join(` ${CSV_SEP} `)}</code>
+                      <code className="text-[11px]">
+                        {FEATURE_TEMPLATE_HEADERS.join(` ${CSV_SEP} `)}
+                      </code>
                       {" — séparateur "}
                       <strong>{CSV_SEP}</strong>
                     </p>
                     <p>
                       <strong>nom</strong> est obligatoire et doit être unique dans la campagne.{" "}
-                      <strong>code</strong> est le code de référence du CDC (FCT-01) : il est enregistré et sert
-                      ensuite à rattacher les exigences et les cas de test, préférez le renseigner.{" "}
-                      <strong>priorite</strong> accepte basse, moyenne, haute, critique.
+                      <strong>code</strong> est le code de référence du CDC (FCT-01) : il est
+                      enregistré et sert ensuite à rattacher les exigences et les cas de test,
+                      préférez le renseigner. <strong>priorite</strong> accepte basse, moyenne,
+                      haute, critique.
                     </p>
                   </CollapsibleContent>
                 </Collapsible>
@@ -218,7 +240,10 @@ function ImportFeaturesPage() {
             <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2.5 text-xs">
               <AlertTriangle className="size-4 shrink-0 text-danger" />
               <p>
-                {t("pages.features.import_missing_columns").replace("{columns}", missingColumns.join(", "))}
+                {t("pages.features.import_missing_columns").replace(
+                  "{columns}",
+                  missingColumns.join(", "),
+                )}
               </p>
             </div>
           )}
@@ -231,13 +256,19 @@ function ImportFeaturesPage() {
                     .replace("{valid}", String(valid.length))
                     .replace("{invalid}", String(invalid.length))}
                 </span>
-                <Button size="sm" onClick={() => void runImport()} disabled={busy || valid.length === 0}>
+                <Button
+                  size="sm"
+                  onClick={() => void runImport()}
+                  disabled={busy || valid.length === 0}
+                >
                   {busy
                     ? t("pages.features.import_running")
                     : t("pages.features.import_action").replace("{count}", String(valid.length))}
                 </Button>
                 {invalid.length > 0 && (
-                  <span className="text-muted-foreground">{t("pages.features.import_skip_invalid")}</span>
+                  <span className="text-muted-foreground">
+                    {t("pages.features.import_skip_invalid")}
+                  </span>
                 )}
               </div>
 

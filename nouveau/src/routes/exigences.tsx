@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet, useMatches } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useMatches, useNavigate } from "@tanstack/react-router";
 import {
   ChevronDown,
   ChevronRight,
@@ -26,13 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -42,6 +36,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { useStore } from "@/lib/dhi-store";
 import { useVisibleProductIds } from "@/lib/use-scope";
 import { type Requirement, type RequirementStatus, type TestCase } from "@/lib/dhi-data";
@@ -102,6 +97,7 @@ function RequirementsList() {
   const { requirements, products, features, tests, updateRequirement, deleteRequirement } =
     useStore();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [productFilter, setProductFilter] = useState("all");
   const [expandedReq, setExpandedReq] = useState<Record<string, boolean>>({});
   const [expandedFeature, setExpandedFeature] = useState<Record<string, boolean>>({});
@@ -118,9 +114,7 @@ function RequirementsList() {
 
   const rows = useMemo(
     () =>
-      visibleRequirements.filter(
-        (r) => productFilter === "all" || r.productId === productFilter,
-      ),
+      visibleRequirements.filter((r) => productFilter === "all" || r.productId === productFilter),
     [visibleRequirements, productFilter],
   );
 
@@ -318,21 +312,18 @@ function RequirementsList() {
           <h2 className="text-[13px] font-semibold tracking-tight">
             {t("pages.requirements.referentiel")}
           </h2>
-          <Select value={productFilter} onValueChange={setProductFilter}>
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder={t("common.produit")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("pages.requirements.tous_les_produits")}</SelectItem>
-              {products
+          <SearchableSelect
+            value={productFilter}
+            onValueChange={setProductFilter}
+            options={[
+              { value: "all", label: t("pages.requirements.tous_les_produits") },
+              ...products
                 .filter((p) => visiblePIds.has(p.id))
-                .map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
+                .map((p) => ({ value: p.id, label: p.name })),
+            ]}
+            placeholder={t("common.produit")}
+            className="w-56"
+          />
           <p className="label-eyebrow ml-auto">
             {fmt("pages.requirements.exigences_count", rows.length)}
           </p>
@@ -361,7 +352,17 @@ function RequirementsList() {
               const { passed, total } = countPassedForReq(r.featureIds);
               const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
               return (
-                <TableRow key={r.id}>
+                <TableRow
+                  key={r.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({
+                      to: "/exigences/$requirementId/modifier",
+                      params: { requirementId: r.id },
+                    });
+                  }}
+                >
                   <TableCell className="num font-medium">{r.id}</TableCell>
                   <TableCell className="max-w-sm">
                     <p className="truncate font-medium">{r.title}</p>
@@ -426,7 +427,7 @@ function RequirementsList() {
                   </TableCell>
                   <TableCell>
                     {canCreateRequirement() ? (
-                      <Select
+                      <SearchableSelect
                         value={r.status}
                         onValueChange={(v) => {
                           updateRequirement(r.id, { status: v as RequirementStatus });
@@ -434,18 +435,12 @@ function RequirementsList() {
                             `${r.id} : ${t(REQUIREMENT_STATUS_T_KEY[v as RequirementStatus])}.`,
                           );
                         }}
-                      >
-                        <SelectTrigger className="h-7 w-36 text-xs">
-                          <StatusPill status={r.status} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(Object.keys(REQUIREMENT_STATUS_T_KEY) as RequirementStatus[]).map((s) => (
-                            <SelectItem key={s} value={s}>
-                              {t(REQUIREMENT_STATUS_T_KEY[s])}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        displayValue={<StatusPill status={r.status} />}
+                        options={(Object.keys(REQUIREMENT_STATUS_T_KEY) as RequirementStatus[]).map(
+                          (s) => ({ value: s, label: t(REQUIREMENT_STATUS_T_KEY[s]) }),
+                        )}
+                        className="h-7 w-36 text-xs"
+                      />
                     ) : (
                       <StatusPill status={r.status} />
                     )}

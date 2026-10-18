@@ -1,4 +1,4 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/dhi/AppShell";
 import { CriticalityBadge, VerdictBadge } from "@/components/dhi/indicators";
 import {
@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { projects as seedProjects } from "@/lib/dhi-data";
 import { projectTabs } from "@/lib/dhi-nav";
 import { useI18n } from "@/lib/i18n";
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/projets/$projectId/tests")({
 function ProjectTests() {
   const { projectId } = Route.useParams();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { projects, campaigns, tests } = useStore();
   const project = projects.find((p) => p.id === projectId);
 
@@ -60,7 +62,14 @@ function ProjectTests() {
             {rows.map((tc) => {
               const camp = campaigns.find((c) => c.id === tc.campaignId);
               return (
-                <TableRow key={tc.id}>
+                <TableRow
+                  key={tc.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({ to: "/execution/$testId", params: { testId: tc.id } });
+                  }}
+                >
                   <TableCell className="num font-medium">{tc.id}</TableCell>
                   <TableCell className="max-w-xs truncate">{tc.name}</TableCell>
                   <TableCell className="text-sm">

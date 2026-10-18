@@ -75,6 +75,10 @@ export async function login(email, password) {
     throw new AppError('Email ou mot de passe incorrect', 401);
   }
 
+  if (user.is_active === false) {
+    throw new AppError('Compte désactivé. Contactez votre administrateur.', 403);
+  }
+
   if (user.locked_until && new Date(user.locked_until) > new Date()) {
     throw new AppError('Compte temporairement verrouillé. Réessayez plus tard.', 423);
   }
@@ -160,6 +164,18 @@ export async function blockUser(userId, durationMinutes = 60) {
 export async function unblockUser(userId) {
   const user = await db.users.unblock(userId);
   if (!user) throw new AppError('Utilisateur non trouvé', 404);
+}
+
+export async function deactivateUser(userId) {
+  const user = await db.users.setActive(userId, false);
+  if (!user) throw new AppError('Utilisateur non trouvé', 404);
+}
+
+/** Reactive un compte et leve un eventuel verrouillage apres echecs de connexion. */
+export async function activateUser(userId) {
+  const user = await db.users.setActive(userId, true);
+  if (!user) throw new AppError('Utilisateur non trouvé', 404);
+  await db.users.unblock(userId);
 }
 
 export async function softDeleteUser(userId) {

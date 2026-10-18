@@ -17,13 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -34,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { PROJECT_STATUS_LABEL, type Project } from "@/lib/dhi-data";
 import { visibleProjects, getUser } from "@/lib/access";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { useI18n } from "@/lib/i18n";
 import { productScore, useStore } from "@/lib/dhi-store";
 import { canCreateProject } from "@/lib/role-protection";
@@ -124,26 +119,18 @@ function ProjectsList() {
               className="w-64 pl-8"
             />
           </div>
-          <Select value={productFilter} onValueChange={setProductFilter}>
-            <SelectTrigger className="w-52">
-              <SelectValue placeholder={t("pages.projects.product")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("pages.projects.all_products")}</SelectItem>
-              {products
-                .filter((p) => showArchived || !p.isArchived)
-                .map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={productFilter}
+            onValueChange={setProductFilter}
+            options={[
+              { value: "all", label: t("pages.projects.all_products") },
+              ...products.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+            placeholder={t("pages.projects.product")}
+            className="w-52"
+          />
           <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox
-              checked={showArchived}
-              onCheckedChange={(v) => setShowArchived(v === true)}
-            />
+            <Checkbox checked={showArchived} onCheckedChange={(v) => setShowArchived(v === true)} />
             {t("pages.projects.show_archived")}
           </label>
           <p className="ml-auto text-sm text-muted-foreground">
@@ -173,13 +160,15 @@ function ProjectsList() {
               const nCamp = campaigns.filter((c) => c.projectId === pr.id).length;
               const nRel = releases.filter((r) => r.projectId === pr.id).length;
               return (
-                <TableRow key={pr.id}>
-                  <TableCell
-                    className="cursor-pointer"
-                    onClick={() =>
-                      navigate({ to: "/projets/$projectId", params: { projectId: pr.id } })
-                    }
-                  >
+                <TableRow
+                  key={pr.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({ to: "/projets/$projectId", params: { projectId: pr.id } });
+                  }}
+                >
+                  <TableCell>
                     <p className="font-medium">{pr.name}</p>
                     <p className="max-w-md truncate text-xs text-muted-foreground">
                       {pr.objective}
@@ -267,7 +256,8 @@ function ProjectsList() {
               {toArchive?.isArchived
                 ? `${t("actions.restaurer")} « ${toArchive?.name} » ?`
                 : t("pages.projects.archive_title").replace("{name}", toArchive?.name ?? "")}
-            </AlertDialogTitle>            <AlertDialogDescription>
+            </AlertDialogTitle>{" "}
+            <AlertDialogDescription>
               {toArchive?.isArchived
                 ? t("pages.projects.restore_description")
                 : t("pages.projects.archive_description")}

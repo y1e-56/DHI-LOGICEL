@@ -1,3 +1,4 @@
+import { ensureRelease } from './versionService.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { withTransaction } from '../config/database.js';
 import bus from '../lib/eventBus.js';
@@ -28,7 +29,14 @@ export async function createProduct(data) {
     const existing = await db.products.findByName(data.name);
     if (existing) throw new AppError('Un produit avec ce nom existe déjà', 409);
 
-    const product = await db.products.create(data);
+    // Produit et version initiale dans la meme transaction : pas de produit
+    // sans version si la creation de la version echoue.
+    const { version, ...fields } = data;
+    const product = await withTransaction(async (client) => {
+      const created = await db.products.create(fields, client);
+      await ensureRelease(created.id, version, fields.created_by, client);
+      return created;
+    });
     bus.emit('product:created', { product, user_id: data.created_by || null });
     return product;
   } catch (error) {
@@ -43,8 +51,11 @@ export async function updateProduct(id, data) {
       const existing = await db.products.findByName(data.name, id);
       if (existing) throw new AppError('Un produit avec ce nom existe déjà', 409);
     }
-    const product = await db.products.update(id, data);
+    const { version, ...fields } = data;
+    const product = await db.products.update(id, fields);
     if (!product) throw new AppError('Produit non trouvé', 404);
+    // Version ajoutee depuis la fiche (produit encore sans version).
+    if (version !== undefined) await ensureRelease(id, version);
     bus.emit('product:updated', { product, product_id: id, user_id: null });
     return product;
   } catch (error) {

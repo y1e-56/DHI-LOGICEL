@@ -20,7 +20,21 @@ export const SEPARATION_MESSAGES = {
     "Vous ne pouvez pas rejeter votre propre résolution : un autre testeur doit se prononcer.",
   updateOwnVerdict:
     "Vous ne pouvez pas saisir ou confirmer le verdict d'une exécution que vous avez vous-même exécutée : un autre membre de la campagne doit le faire.",
+  executionClosed:
+    "Cette exécution est terminée : seul un responsable de la campagne peut la modifier ou la rouvrir.",
 };
+
+/**
+ * Rôles qui pilotent une campagne et peuvent donc réviser ou rouvrir une
+ * exécution terminée. Aligné sur MANAGE_CAMPAIGN_ROLES / canExecuteTest() du front.
+ */
+export const EXECUTION_MANAGER_ROLES = [
+  'admin',
+  'chef_testeur',
+  'quality_manager',
+  'qa_lead',
+  'chef_projet',
+];
 
 /**
  * Vérifie qu'un utilisateur ne valide/rejette pas sa propre résolution.
@@ -58,4 +72,19 @@ export function assertCanRecordVerdict({ executedBy, actorId, currentResult }) {
   ) {
     throw new AppError(SEPARATION_MESSAGES.updateOwnVerdict, 403);
   }
+}
+
+/**
+ * Vérifie qu'un testeur simple ne rejoue pas une exécution terminée : une fois
+ * le résultat rendu (≠ not_run), seul un rôle qui pilote la campagne peut le
+ * modifier ou rouvrir l'exécution. Même règle que canExecuteTest() du front.
+ * @param {object} opts
+ * @param {string[]} opts.actorRoles      - rôles de l'utilisateur qui agit
+ * @param {string|null} opts.currentResult- résultat actuel (null/'not_run' = pas encore exécuté)
+ * @throws {AppError} 403 si un testeur simple touche une exécution terminée
+ */
+export function assertCanReexecute({ actorRoles, currentResult }) {
+  if (currentResult == null || currentResult === 'not_run') return;
+  if (actorRoles.some((r) => EXECUTION_MANAGER_ROLES.includes(r))) return;
+  throw new AppError(SEPARATION_MESSAGES.executionClosed, 403);
 }

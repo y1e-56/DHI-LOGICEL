@@ -1,4 +1,5 @@
 import pool from '../config/database.js';
+import { versionsByIds } from './releases.js';
 import { paginate } from './helpers/paginate.js';
 
 export async function list(projectId, client = null) {
@@ -250,7 +251,10 @@ async function attachTeam(rows, client) {
     nameBucket[row.campaign_id].push(nameOf(row));
   }
 
+  // Numero de la version visee (releases.version), pour l'affichage.
+  const versions = await versionsByIds(rows.map((r) => r.release_id), client);
   for (const row of rows) {
+    row.release_version = versions.get(row.release_id) ?? null;
     row.test_leads = map[row.id] || [];
     row.test_lead_names = nameMap[row.id] || [];
     row.testers = testers[row.id] || [];

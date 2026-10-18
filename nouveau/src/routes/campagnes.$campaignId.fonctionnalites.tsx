@@ -1,8 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useMatches, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Plus, Search, X } from "lucide-react";
+import { FileText, FileUp, ListPlus, Search, X } from "lucide-react";
 import { AppShell } from "@/components/dhi/AppShell";
+import { ImportMenu } from "@/components/dhi/ImportMenu";
 import { CriticalityBadge, QualityBar } from "@/components/dhi/indicators";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { campaigns as seedCampaigns, TEST_TYPES } from "@/lib/dhi-data";
 import { campaignTabs } from "@/lib/dhi-nav";
 import { canManageCampaign } from "@/lib/role-protection";
@@ -77,12 +79,14 @@ function FeatureCells({ feature }: { feature: ReturnType<typeof useStore>["featu
 function CampaignFeatures() {
   const { campaignId } = Route.useParams();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { campaigns, tests, features, updateCampaign } = useStore();
   const campaign = campaigns.find((c) => c.id === campaignId);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [featureQuery, setFeatureQuery] = useState("");
+  const matches = useMatches();
 
   const importedIds = useMemo(() => new Set(campaign?.featureIds ?? []), [campaign?.featureIds]);
   const fromTests = useMemo(() => {
@@ -122,7 +126,9 @@ function CampaignFeatures() {
     }
     const merged = new Set([...importedIds, ...selected]);
     updateCampaign(campaignId, { featureIds: [...merged] });
-    toast.success(t("pages.campaign_detail.import_fonctionnalites_ok").replace("{n}", String(selected.size)));
+    toast.success(
+      t("pages.campaign_detail.import_fonctionnalites_ok").replace("{n}", String(selected.size)),
+    );
     setSelected(new Set());
     setPickerOpen(false);
   };
@@ -134,22 +140,53 @@ function CampaignFeatures() {
     toast.success(t("pages.campaign_detail.retrait_fonctionnalite_ok"));
   };
 
+  // « Importer » est une route enfant de cette page : sans Outlet, le clic
+  // changeait l'URL mais la liste restait affichee.
+  if (matches[matches.length - 1]?.routeId !== Route.id) return <Outlet />;
+
   return (
     <AppShell
       title={campaign?.name ?? t("nav.campaign_features")}
       subtitle={t("nav.campaign_features")}
-      breadcrumb={[t("nav.execution"), t("nav.campagnes"), campaign?.name ?? "", t("nav.campaign_features")]}
+      breadcrumb={[
+        t("nav.execution"),
+        t("nav.campagnes"),
+        campaign?.name ?? "",
+        t("nav.campaign_features"),
+      ]}
       tabs={campaignTabs(campaignId)}
     >
       <div className="flex flex-col gap-6">
         <section className="panel">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold">{t("pages.campaign_detail.fonctionnalites_importees")}</h3>
+            <h3 className="text-sm font-semibold">
+              {t("pages.campaign_detail.fonctionnalites_importees")}
+            </h3>
             {canManageCampaign() ? (
-              <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>
-                <Plus className="mr-1.5 h-4 w-4" />
-                {t("pages.campaign_detail.importer_fonctionnalites")}
-              </Button>
+              <ImportMenu
+                label={t("actions.importer")}
+                descriptionLabel={t("pages.campaign_detail.import_choisir")}
+                options={[
+                  {
+                    key: "csv",
+                    label: t("pages.features.menu_title"),
+                    description: t("pages.features.import_menu_description"),
+                    icon: FileUp,
+                    onSelect: () =>
+                      navigate({
+                        to: "/campagnes/$campaignId/fonctionnalites/importer",
+                        params: { campaignId },
+                      }),
+                  },
+                  {
+                    key: "picker",
+                    label: t("pages.campaign_detail.importer_fonctionnalites"),
+                    description: t("pages.campaign_detail.selectionner_fonctionnalites"),
+                    icon: ListPlus,
+                    onSelect: () => setPickerOpen(true),
+                  },
+                ]}
+              />
             ) : null}
           </div>
           {importedRows.length === 0 ? (
@@ -169,7 +206,17 @@ function CampaignFeatures() {
               </TableHeader>
               <TableBody>
                 {importedRows.map((f) => (
-                  <TableRow key={f.id}>
+                  <TableRow
+                    key={f.id}
+                    className="cursor-pointer"
+                    onClick={(e) => {
+                      if (isInteractiveClick(e)) return;
+                      void navigate({
+                        to: "/fonctionnalites/$featureId/modifier",
+                        params: { featureId: f.id },
+                      });
+                    }}
+                  >
                     <FeatureCells feature={f} />
                     <TableCell className="text-right">
                       <Link
@@ -181,8 +228,13 @@ function CampaignFeatures() {
                           <FileText className="h-4 w-4" />
                         </Button>
                       </Link>
-{canManageCampaign() ? (
-                        <Button variant="ghost" size="icon-sm" onClick={() => remove(f.id)} title={t("pages.campaign_detail.retirer")}>
+                      {canManageCampaign() ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => remove(f.id)}
+                          title={t("pages.campaign_detail.retirer")}
+                        >
                           <X className="h-4 w-4" />
                         </Button>
                       ) : null}
@@ -195,11 +247,23 @@ function CampaignFeatures() {
         </section>
 
         <section className="panel">
-          <h3 className="mb-4 text-sm font-semibold">{t("pages.campaign_detail.definies_par_tests")}</h3>
+          <h3 className="mb-4 text-sm font-semibold">
+            {t("pages.campaign_detail.definies_par_tests")}
+          </h3>
           <Table>
             <TableBody>
               {testRows.map((f) => (
-                <TableRow key={f.id}>
+                <TableRow
+                  key={f.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({
+                      to: "/fonctionnalites/$featureId/modifier",
+                      params: { featureId: f.id },
+                    });
+                  }}
+                >
                   <FeatureCells feature={f} />
                   <TableCell className="text-right">
                     <Link
@@ -239,7 +303,9 @@ function CampaignFeatures() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("pages.campaign_detail.importer_fonctionnalites")}</DialogTitle>
-            <DialogDescription>{t("pages.campaign_detail.selectionner_fonctionnalites")}</DialogDescription>
+            <DialogDescription>
+              {t("pages.campaign_detail.selectionner_fonctionnalites")}
+            </DialogDescription>
           </DialogHeader>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -253,7 +319,8 @@ function CampaignFeatures() {
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
-              {selected.size} {t("pages.add_campaign.selectionnes_compteur")} · {filteredFeatures.length} / {productFeatures.length}
+              {selected.size} {t("pages.add_campaign.selectionnes_compteur")} ·{" "}
+              {filteredFeatures.length} / {productFeatures.length}
             </span>
             <div className="flex items-center gap-3">
               {filteredFeatures.length > 0 ? (
@@ -282,10 +349,16 @@ function CampaignFeatures() {
                 key={f.id}
                 className="flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 hover:bg-muted"
               >
-                <Checkbox checked={selected.has(f.id)} onCheckedChange={() => toggle(f.id)} className="mt-0.5" />
+                <Checkbox
+                  checked={selected.has(f.id)}
+                  onCheckedChange={() => toggle(f.id)}
+                  className="mt-0.5"
+                />
                 <span className="flex-1">
                   <span className="block text-sm font-medium">{f.name}</span>
-                  <span className="block max-w-md truncate text-xs text-muted-foreground">{f.description}</span>
+                  <span className="block max-w-md truncate text-xs text-muted-foreground">
+                    {f.description}
+                  </span>
                 </span>
               </label>
             ))}

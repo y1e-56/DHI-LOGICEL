@@ -1,5 +1,5 @@
 import type { Criticality } from "@/lib/dhi-data";
-import { CSV_SEP, parseCsvLine } from "@/lib/test-import";
+import { CSV_SEP, parseCsvRecords } from "@/lib/test-import";
 
 /**
  * Format d'import des fonctionnalités (par campagne, séparateur `;`, UTF-8).
@@ -77,10 +77,12 @@ export type FeatureImportResult = {
 };
 
 export function parseFeatureImport(text: string): FeatureImportResult {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) return { rows: [], missingColumns: ["nom"], totalLines: 0, duplicatedCodes: [] };
+  // Lecture par enregistrements : une description Excel sur plusieurs lignes
+  // reste une seule fonctionnalite.
+  const records = parseCsvRecords(text);
+  if (records.length < 2) return { rows: [], missingColumns: ["nom"], totalLines: 0, duplicatedCodes: [] };
 
-  const headerCells = parseCsvLine(lines[0] ?? "").map((h) => h.trim());
+  const headerCells = (records[0] ?? []).map((h) => h.trim());
   const columns = mapHeaders(headerCells);
   const missingColumns = Object.keys(HEADER_ALIASES).filter((k) => columns[k] === undefined);
 
@@ -92,8 +94,8 @@ export function parseFeatureImport(text: string): FeatureImportResult {
   const rows: ParsedFeatureRow[] = [];
   const codeCount = new Map<string, number>();
 
-  for (let ln = 1; ln < lines.length; ln++) {
-    const cells = parseCsvLine(lines[ln] ?? "");
+  for (let ln = 1; ln < records.length; ln++) {
+    const cells = records[ln] ?? [];
     const errors: string[] = [];
 
     const name = cell(cells, "nom");
@@ -124,7 +126,7 @@ export function parseFeatureImport(text: string): FeatureImportResult {
     }
   }
 
-  return { rows, missingColumns, totalLines: lines.length - 1, duplicatedCodes };
+  return { rows, missingColumns, totalLines: records.length - 1, duplicatedCodes };
 }
 
 function csvCell(value: string): string {

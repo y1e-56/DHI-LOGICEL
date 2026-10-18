@@ -32,15 +32,23 @@ async function assertTesterExists(assignedTo) {
 }
 
 export async function createTestCase(data) {
-  const feature = await db.testCases.getCampaignIdByFeature(data.feature_id);
-  if (!feature) throw new AppError('Fonctionnalité non trouvée', 404);
+  // Un cas de test peut exister sans fonctionnalité (feature_id nullable en
+  // base) : dans ce cas la campagne est fournie directement. Avec une
+  // fonctionnalité, la campagne est déduite de cette dernière, comme avant.
+  let campaignId = data.campaign_id;
+  if (data.feature_id) {
+    const feature = await db.testCases.getCampaignIdByFeature(data.feature_id);
+    if (!feature) throw new AppError('Fonctionnalité non trouvée', 404);
+    campaignId = feature.campaign_id;
 
-  const existing = await db.testCases.findByName(data.feature_id, data.name);
-  if (existing) throw new AppError('Un cas de test avec ce nom existe déjà pour cette fonctionnalité', 409);
+    const existing = await db.testCases.findByName(data.feature_id, data.name);
+    if (existing) throw new AppError('Un cas de test avec ce nom existe déjà pour cette fonctionnalité', 409);
+  }
+  if (!campaignId) throw new AppError('Une campagne ou une fonctionnalité est requise', 400);
 
   await assertTesterExists(data.assigned_to);
 
-  const testCase = await db.testCases.create(data, feature.campaign_id);
+  const testCase = await db.testCases.create(data, campaignId);
   bus.emit('testCase:created', { testCase, feature_id: data.feature_id });
   if (testCase?.assigned_to) {
     bus.emit('testCase:assigned', {

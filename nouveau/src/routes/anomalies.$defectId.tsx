@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArrowLeft, Loader2, Upload } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/dhi/AppShell";
 import { EvidenceThumbnails } from "@/components/dhi/EvidenceThumbnails";
@@ -8,13 +8,7 @@ import { ScreenshotPicker } from "@/components/dhi/ScreenshotPicker";
 import { DefectStatusBadge, SeverityBadge } from "@/components/dhi/indicators";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Separator } from "@/components/ui/separator";
 import {
   DEFECT_STATUS_LABEL,
@@ -25,6 +19,7 @@ import {
 
 import { useI18n } from "@/lib/i18n";
 import { api, uploadEvidence } from "@/lib/api";
+import { canResolveAnomaly, canValidateAnomaly } from "@/lib/role-protection";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
 
 export const Route = createFileRoute("/anomalies/$defectId")({
@@ -50,16 +45,16 @@ export const Route = createFileRoute("/anomalies/$defectId")({
 function DefectDetailPage() {
   const { defectId } = Route.useParams();
   const { t } = useI18n();
-  const { defects, features, users, tests, campaigns, updateDefect, currentUser } = useStore();
+  const { defects, features, users, tests, campaigns, updateDefect } = useStore();
   const defect = defects.find((d) => d.id === defectId);
   if (!defect) return null;
   const linkedTest = defect.testId ? tests.find((test) => test.id === defect.testId) : undefined;
   const linkedCampaign = defect.campaignId
     ? campaigns.find((campaign) => campaign.id === defect.campaignId)
     : undefined;
-  const fallbackCampaign = linkedCampaign ?? (linkedTest
-    ? campaigns.find((campaign) => campaign.id === linkedTest.campaignId)
-    : undefined);
+  const fallbackCampaign =
+    linkedCampaign ??
+    (linkedTest ? campaigns.find((campaign) => campaign.id === linkedTest.campaignId) : undefined);
   // Id hébergé en base : les preuves nécessitent un serveur et un jeton.
   const backendId = /^\d+$/.test(defect.id) ? Number(defect.id) : null;
 
@@ -202,33 +197,33 @@ function DefectDetailPage() {
         }
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : t("pages.anomalies.status_updated"),
-      );
+      toast.error(error instanceof Error ? error.message : t("pages.anomalies.status_updated"));
     }
   };
 
-  const forbiddenRoles: string[] = ["developpeur"];
-  const userRoles = currentUser
-    ? Array.isArray(currentUser.roles) && currentUser.roles.length > 0
-      ? currentUser.roles
-      : [currentUser.role]
-    : [];
-  const canChangeStatus = userRoles.length > 0 && userRoles.some((r) => !forbiddenRoles.includes(r));
+  // Le développeur fait avancer l'anomalie vers la résolution (correction puis
+  // « à retester ») ; le testeur tranche ensuite (valider / réouvrir). Chacun ne
+  // voit que les cibles qui relèvent de son rôle, et l'affectation reste gérée
+  // par les rôles qui pilotent (le développeur ne se réassigne pas tout seul).
+  const canResolve = canResolveAnomaly();
+  const canValidate = canValidateAnomaly();
+  const canAssign = canValidate;
   const allowedNext = DEFECT_TRANSITIONS[defect.status] ?? [];
+  const resolveTargets = canResolve
+    ? allowedNext.filter((s) => s !== "fermee" && s !== "reouverte")
+    : [];
+  const validateTargets = canValidate
+    ? allowedNext.filter((s) => s === "fermee" || s === "reouverte")
+    : [];
+  const allowedForUser = [...resolveTargets, ...validateTargets];
+  const canChangeStatus = allowedForUser.length > 0;
 
   return (
     <AppShell
       title={`${defect.id} : ${defect.title}`}
       subtitle={t("pages.anomalies.subtitle")}
       breadcrumb={[t("nav.systeme"), t("nav.anomalies"), defect.id]}
-      actions={
-        <Button size="sm" variant="outline" asChild>
-          <Link to="/anomalies">
-            <ArrowLeft className="size-4" /> {t("pages.anomalies.title")}
-          </Link>
-        </Button>
-      }
+      backTo={{ to: "/anomalies" }}
     >
       <div className="panel p-6 pl-12 sm:p-8 sm:pl-16 xl:pl-20">
         <div className="flex flex-wrap gap-2">
@@ -263,19 +258,12 @@ function DefectDetailPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="panel grid gap-1.5">
           <Label>{t("pages.anomalies.assignee")}</Label>
-          {canChangeStatus ? (
-            <Select value={defect.assignee} onValueChange={reassign}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {universe.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {canAssign ? (
+            <SearchableSelect
+              value={defect.assignee}
+              onValueChange={reassign}
+              options={universe.map((p) => ({ value: p, label: p }))}
+            />
           ) : (
             <div className="flex h-9 items-center rounded-md border border-border px-3">
               <span className="text-sm font-medium">{defect.assignee}</span>
@@ -284,21 +272,13 @@ function DefectDetailPage() {
         </div>
         <div className="panel grid gap-1.5">
           <Label>{t("pages.anomalies.developer")}</Label>
-          {canChangeStatus ? (
-            <Select value={defect.developer ?? ""} onValueChange={setDeveloper}>
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={t("pages.anomalies.developer_placeholder")}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {devs.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {canAssign ? (
+            <SearchableSelect
+              value={defect.developer ?? ""}
+              onValueChange={setDeveloper}
+              options={devs.map((p) => ({ value: p, label: p }))}
+              placeholder={t("pages.anomalies.developer_placeholder")}
+            />
           ) : (
             <div className="flex h-9 items-center rounded-md border border-border px-3">
               <span className="text-sm font-medium">{defect.developer ?? "—"}</span>
@@ -308,18 +288,11 @@ function DefectDetailPage() {
         <div className="panel grid gap-1.5">
           <Label>{t("common.statut")}</Label>
           {canChangeStatus ? (
-            <Select value={defect.status} onValueChange={changeStatus}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {allowedNext.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {DEFECT_STATUS_LABEL[s]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={defect.status}
+              onValueChange={(v) => void changeStatus(v as DefectStatus)}
+              options={allowedForUser.map((s) => ({ value: s, label: DEFECT_STATUS_LABEL[s] }))}
+            />
           ) : (
             <div className="flex h-9 items-center rounded-md border border-border px-3">
               <span className="text-sm font-medium">{DEFECT_STATUS_LABEL[defect.status]}</span>
@@ -334,7 +307,7 @@ function DefectDetailPage() {
             <p className="text-sm font-medium">{t("pages.anomalies.evidence_section")}</p>
             <p className="text-sm text-muted-foreground">{t("pages.anomalies.captures_hint")}</p>
           </div>
-          {backendId && proofFiles.length > 0 ? (
+          {backendId && canResolve && proofFiles.length > 0 ? (
             <Button
               type="button"
               variant="outline"
@@ -343,7 +316,11 @@ function DefectDetailPage() {
               onClick={() => void saveProof()}
               disabled={savingProof}
             >
-              {savingProof ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              {savingProof ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Upload className="size-4" />
+              )}
               {t("pages.anomalies.save_captures")}
             </Button>
           ) : null}
@@ -354,15 +331,15 @@ function DefectDetailPage() {
           refreshKey={evidenceRefresh}
           onCountChange={setServerProofCount}
         />
-        {backendId ? (
+        {backendId && canResolve ? (
           <div className="mt-3">
             <ScreenshotPicker key={pickerKey} onChange={setProofFiles} labels={captureLabels} />
           </div>
-        ) : (
+        ) : !backendId ? (
           <p className="mt-3 text-sm text-muted-foreground">
             {t("pages.anomalies.login_required_for_captures")}
           </p>
-        )}
+        ) : null}
       </div>
 
       <div className="rounded-md border border-border bg-muted/50 p-3 text-sm">

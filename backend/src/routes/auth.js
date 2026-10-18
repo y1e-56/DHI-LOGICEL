@@ -434,6 +434,23 @@ router.patch('/users/:id/soft-delete', authenticate, requireAdmin, async (req, r
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       404: { $ref: '#/components/responses/NotFound' }
  */
+// Desactivation reversible : le compte reste liste mais ne peut plus se connecter.
+router.patch('/users/:id/deactivate', authenticate, requireAdmin, async (req, res) => {
+  const targetId = Number(req.params.id);
+  if (targetId === req.user.id) {
+    return res.status(400).json({ message: 'Vous ne pouvez pas désactiver votre propre compte' });
+  }
+  await authService.deactivateUser(targetId);
+  bus.emit('data:changed', { entity: 'users' });
+  res.json({ message: 'Utilisateur désactivé' });
+});
+
+router.patch('/users/:id/activate', authenticate, requireAdmin, async (req, res) => {
+  await authService.activateUser(Number(req.params.id));
+  bus.emit('data:changed', { entity: 'users' });
+  res.json({ message: 'Utilisateur réactivé' });
+});
+
 router.patch('/users/:id/restore', authenticate, requireAdmin, async (req, res) => {
   await authService.restoreUser(Number(req.params.id));
   bus.emit('data:changed', { entity: 'users' });

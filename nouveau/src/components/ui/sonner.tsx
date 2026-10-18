@@ -1,10 +1,15 @@
 import { Toaster as Sonner } from "sonner";
+import { useI18n } from "@/lib/i18n";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  // Sans le theme, les couleurs riches (succes, erreur) restaient claires en
+  // mode sombre.
+  const { theme } = useI18n();
   return (
     <Sonner
+      theme={theme}
       className="toaster group"
       toastOptions={{
         classNames: {

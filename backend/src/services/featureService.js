@@ -1,6 +1,13 @@
 import { withTransaction } from '../config/database.js';
 import { AppError } from '../middleware/errorHandler.js';
 import bus from '../lib/eventBus.js';
+import { loadRules } from './rulesEngine.js';
+import { assertConformityCoverage, featureConformityVerdict } from './coverageGuard.js';
+import {
+  WORKFLOW_MESSAGES,
+  assertFeatureCanBeConforme,
+  summarizeOutcome,
+} from './workflowGuard.js';
 import * as db from '../db/index.js';
 import { deleteAttachmentFile } from '../config/upload.js';
 import { generateFeatureDocument } from './featureDocumentService.js';
@@ -135,15 +142,31 @@ export async function getFeatureAnomalies(featureId) {
   return db.features.getAnomalies(featureId);
 }
 
-export async function updateFeatureStatus(id, status) {
+const FEATURE_STATUSES = ['pending', 'conforme', 'anomaly_detected'];
+
+export async function updateFeatureStatus(id, status, confirmed = false) {
+  if (!FEATURE_STATUSES.includes(status)) {
+    throw new AppError(WORKFLOW_MESSAGES.invalidFeatureStatus, 400);
+  }
+  // Conforme = tous les cas valides et toutes les anomalies validees. Les
+  // anomalies ne sont plus validees d'office : chacune doit l'etre par un
+  // autre membre que celui qui a signale sa resolution (separation des
+  // responsabilites).
+  if (status === 'conforme') {
+    const [testCases, openAnomalies] = await Promise.all([
+      db.testCases.listWithLatestResult({ featureId: id }),
+      db.anomalies.countOpen({ featureId: id }),
+    ]);
+    assertFeatureCanBeConforme(summarizeOutcome(testCases, openAnomalies));
+    // Couverture des types requis : RG-7 pour une fonctionnalite critique, RG-6 sinon.
+    const [feature, rules] = await Promise.all([db.features.findById(id), loadRules()]);
+    if (!feature) throw new AppError('Fonctionnalité non trouvée', 404);
+    assertConformityCoverage(featureConformityVerdict(feature, testCases, rules), confirmed);
+  }
+
   return withTransaction(async (client) => {
     const feature = await db.features.updateStatus(id, status, client);
     if (!feature) throw new AppError('Fonctionnalité non trouvée', 404);
-
-    if (status === 'conforme') {
-      await db.features.validateAnomaliesByFeature(id, client);
-    }
-
     return feature;
   }).then(async (feature) => {
     if (status === 'conforme') {

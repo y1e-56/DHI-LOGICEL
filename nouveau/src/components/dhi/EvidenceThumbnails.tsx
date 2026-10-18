@@ -33,8 +33,9 @@ export function EvidenceThumbnails({
     (async () => {
       setLoading(true);
       try {
-        const images = (await getEvidenceByEntity(entityType, backendId))
-          .data.filter((e) => e.file_type?.startsWith("image/"));
+        const images = (await getEvidenceByEntity(entityType, backendId)).filter((e) =>
+          e.file_type?.startsWith("image/"),
+        );
         if (cancelled || images.length === 0) {
           if (onCountChange) onCountChange(images.length);
           return;

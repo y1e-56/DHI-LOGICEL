@@ -2,6 +2,10 @@ import { withTransaction } from '../config/database.js';
 import { AppError } from '../middleware/errorHandler.js';
 import bus from '../lib/eventBus.js';
 import * as db from '../db/index.js';
+import { assertCampaignCanClose, campaignRates } from './workflowGuard.js';
+import { VERSION_MESSAGES, ensureRelease } from './versionService.js';
+import { evaluateRule, loadRules } from './rulesEngine.js';
+import { coverageVerdicts } from './coverageGuard.js';
 import { _setTestersWithClient, _setDevelopersWithClient } from './campaignMemberService.js';
 
 export async function listCampaigns(projectId) {
@@ -71,6 +75,13 @@ export async function createCampaign(data) {
   const existing = await db.campaigns.findByName(data.project_id, data.name);
   if (existing) throw new AppError('Une campagne avec ce nom existe déjà dans ce projet', 409);
 
+  // Toute campagne vise une version determinee du produit de son projet.
+  if (data.version !== undefined) {
+    const { version, ...rest } = data;
+    data = { ...rest, release_id: await releaseOfProject(data.project_id, version, data.created_by) };
+  }
+  if (!data.release_id) throw new AppError(VERSION_MESSAGES.required, 400);
+
   return withTransaction(async (client) => {
     const campaign = await db.campaigns.create(data, client);
     console.log('[campaignService] Campagne créée:', campaign);
@@ -99,7 +110,22 @@ export async function createCampaign(data) {
   });
 }
 
+/** Version `version` du produit du projet, creee si besoin. */
+async function releaseOfProject(projectId, version, createdBy = null) {
+  const project = await db.projects.findById(projectId);
+  if (!project) throw new AppError('Projet non trouvé', 404);
+  if (!project.product_id) throw new AppError(VERSION_MESSAGES.noProduct, 400);
+  return ensureRelease(project.product_id, version, createdBy);
+}
+
 export async function updateCampaign(id, data) {
+  // Changement de version : resolue sur le produit du projet de la campagne.
+  if (data.version !== undefined) {
+    const current = await db.campaigns.findById(id);
+    if (!current) throw new AppError('Campagne non trouvée', 404);
+    const { version, ...rest } = data;
+    data = { ...rest, release_id: await releaseOfProject(current.project_id, version) };
+  }
   console.log('[campaignService] updateCampaign id=' + id + ' avec data:', data);
   const scalarFields = ['name', 'objective', 'organization_mode', 'start_date', 'end_date', 'status',
     'objective_audio_data', 'objective_audio_type', 'objective_transcription', 'objective_duration_seconds'];
@@ -108,6 +134,34 @@ export async function updateCampaign(id, data) {
 
   if (!hasScalarFields && !hasTestLeadIds && !data.testers && !data.developers) {
     throw new AppError('Aucune donnée à mettre à jour', 400);
+  }
+
+  // Cloture : regles RG-4 / RG-5 du referentiel. Une regle bloquante non
+  // respectee refuse la cloture ; une regle en avertissement, ou des anomalies
+  // non validees, demandent une confirmation explicite.
+  let closing = false;
+  if (data.status === 'completed') {
+    const current = await db.campaigns.findById(id);
+    if (!current) throw new AppError('Campagne non trouvée', 404);
+    closing = current.status !== 'completed';
+    if (closing) {
+      const [testCases, openAnomalies, features] = await Promise.all([
+        db.testCases.listWithLatestResult({ campaignId: id }),
+        db.anomalies.countOpen({ campaignId: id }),
+        db.features.findByCampaign(id),
+      ]);
+      // Seuils du referentiel : RG-4 (taux d'execution), RG-5 (taux de succes).
+      // Une regle inactive ou un taux non calculable (aucun cas) ne s'applique pas.
+      const rules = await loadRules();
+      const rates = campaignRates(testCases);
+      const verdicts = [
+        rates.executionRate === null ? null : evaluateRule(rules.get('RG-4'), rates.executionRate),
+        rates.successRate === null ? null : evaluateRule(rules.get('RG-5'), rates.successRate),
+        // RG-6 (couverture globale des types requis) et RG-7 (fonctionnalites critiques).
+        ...coverageVerdicts(features, testCases, rules),
+      ].filter(Boolean);
+      assertCampaignCanClose({ verdicts, openAnomalies }, data.confirm_incomplete === true);
+    }
   }
 
   if (data.name !== undefined) {
@@ -154,7 +208,9 @@ export async function updateCampaign(id, data) {
 
     bus.emit('campaign:updated', { campaign: campaignWithMembers, campaign_id: id, user_id: null });
 
-    if (data.status === 'completed') {
+    // Seul le vrai passage a « terminee » notifie : un second PUT du meme
+    // statut (synchronisation du store) envoyait les notifications en double.
+    if (closing) {
       bus.emit('campaign:completed', { campaign: campaignWithMembers });
     }
 

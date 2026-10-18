@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet, useMatches } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useMatches, useNavigate } from "@tanstack/react-router";
 import {
   FileText,
   Plus,
@@ -25,13 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -42,6 +36,7 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import {
   CRITICALITY_LABEL,
   TEST_TYPES,
@@ -93,9 +88,17 @@ function FeaturesPage() {
 }
 
 function FeaturesList() {
-  const { features, products, requirements, tests, productDocuments, deleteFeature, updateRequirement } =
-    useStore();
+  const {
+    features,
+    products,
+    requirements,
+    tests,
+    productDocuments,
+    deleteFeature,
+    updateRequirement,
+  } = useStore();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [productFilter, setProductFilter] = useState("all");
   const [critFilter, setCritFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -179,34 +182,31 @@ function FeaturesList() {
               className="w-64 pl-8"
             />
           </div>
-          <Select value={productFilter} onValueChange={setProductFilter}>
-            <SelectTrigger className="w-52">
-              <SelectValue placeholder={t("common.produit")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("pages.features.all_products")}</SelectItem>
-              {products
+          <SearchableSelect
+            value={productFilter}
+            onValueChange={setProductFilter}
+            options={[
+              { value: "all", label: t("pages.features.all_products") },
+              ...products
                 .filter((p) => visiblePIds.has(p.id))
-                .map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-          <Select value={critFilter} onValueChange={setCritFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder={t("common.criticite")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("pages.features.all_criticites")}</SelectItem>
-              {(Object.keys(CRITICALITY_LABEL) as Criticality[]).map((c) => (
-                <SelectItem key={c} value={c}>
-                  {CRITICALITY_LABEL[c]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                .map((p) => ({ value: p.id, label: p.name })),
+            ]}
+            placeholder={t("common.produit")}
+            className="w-52"
+          />
+          <SearchableSelect
+            value={critFilter}
+            onValueChange={setCritFilter}
+            options={[
+              { value: "all", label: t("pages.features.all_criticites") },
+              ...(Object.keys(CRITICALITY_LABEL) as Criticality[]).map((c) => ({
+                value: c,
+                label: CRITICALITY_LABEL[c],
+              })),
+            ]}
+            placeholder={t("common.criticite")}
+            className="w-44"
+          />
           <p className="ml-auto text-sm text-muted-foreground">
             {t("pages.features.feature_count").replace("{count}", String(rows.length))}
           </p>
@@ -236,7 +236,17 @@ function FeaturesList() {
               ).length;
               const fRate = fTests.length > 0 ? Math.round((fPassed / fTests.length) * 100) : null;
               return (
-                <TableRow key={f.id}>
+                <TableRow
+                  key={f.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({
+                      to: "/fonctionnalites/$featureId/modifier",
+                      params: { featureId: f.id },
+                    });
+                  }}
+                >
                   <TableCell>
                     <p className="font-medium">{f.name}</p>
                     <p className="max-w-xs truncate text-xs text-muted-foreground">
@@ -414,7 +424,7 @@ function FeaturesList() {
                             {t("pages.features.based_on").replace(
                               "{name}",
                               productDocuments.find((d) => d.id === f.sourceDocId)?.name ??
-                                t("pages.features.source_doc_placeholder")
+                                t("pages.features.source_doc_placeholder"),
                             )}
                           </Link>
                         ) : null}

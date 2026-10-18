@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import * as testExecutionsService from '../services/testExecutionsService.js';
-import { authenticate, requireRole } from '../middleware/auth.js';
+import { authenticate, getUserRoles, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -174,10 +174,10 @@ router.get('/:id', authenticate, async (req, res, next) => {
 router.post('/', authenticate, requireExecutionEditor, async (req, res, next) => {
   try {
     const parsed = createSchema.parse(req.body);
-    const exec = await testExecutionsService.createExecution({
-      ...parsed,
-      executed_by: req.user.id,
-    });
+    const exec = await testExecutionsService.createExecution(
+      { ...parsed, executed_by: req.user.id },
+      getUserRoles(req.user)
+    );
     res.status(201).json(exec);
   } catch (err) { next(err); }
 });
@@ -217,7 +217,12 @@ router.post('/', authenticate, requireExecutionEditor, async (req, res, next) =>
 router.put('/:id', authenticate, requireExecutionEditor, async (req, res, next) => {
   try {
     const parsed = updateSchema.parse(req.body);
-    const exec = await testExecutionsService.updateExecution(parseInt(req.params.id), parsed, req.user.id);
+    const exec = await testExecutionsService.updateExecution(
+      parseInt(req.params.id),
+      parsed,
+      req.user.id,
+      getUserRoles(req.user)
+    );
     res.json(exec);
   } catch (err) { next(err); }
 });

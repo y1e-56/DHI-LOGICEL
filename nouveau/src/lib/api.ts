@@ -76,6 +76,8 @@ export type BackendUser = {
   role: string;
   roles?: string[];
   date_suppression?: string | null;
+  /** Faux = compte desactive par un administrateur (reversible). */
+  is_active?: boolean;
   locked_until?: string | null;
 };
 
@@ -93,6 +95,8 @@ export type BackendTestCase = {
   steps?: string | string[] | null;
   expected_result?: string | null;
   priority?: string | null;
+  /** Type du cas de test (colonne test_cases.type). */
+  type?: string | null;
   test_type?: string | null;
   /** Testeur affecte, reference users(id) — null si non affecte. */
   assigned_to?: number | null;
@@ -113,6 +117,8 @@ export type BackendTestExecution = {
 };
 
 export type BackendCampaign = {
+  /** Numero de la version visee (releases.version). */
+  release_version?: string | null;
   id: number;
   project_id: number;
   name: string;
@@ -132,6 +138,8 @@ export type BackendCampaign = {
 };
 
 export type BackendProject = {
+  /** Numero de la version cible (releases.version). */
+  target_version?: string | null;
   id: number;
   product_id?: number | null;
   name: string;
@@ -212,7 +220,16 @@ export type BackendEvidence = {
 };
 
 export async function uploadEvidence(
-  entityType: "product" | "project" | "campaign" | "feature" | "go_live_decision" | "anomaly",
+  // `test_execution` : les preuves d'un cas non valide se rattachent a
+  // l'execution, pas a la campagne — sinon la preuve survit au cas.
+  entityType:
+    | "product"
+    | "project"
+    | "campaign"
+    | "feature"
+    | "test_execution"
+    | "go_live_decision"
+    | "anomaly",
   entityId: string,
   file: File,
   description: string,
@@ -276,7 +293,9 @@ export function mapBackendEvidence(evidence: BackendEvidence) {
   let metadata: { name?: string; type?: string } = {};
   try {
     metadata = JSON.parse(evidence.description ?? "{}");
-  } catch {}
+  } catch {
+    // description non JSON : on garde les valeurs par défaut ci-dessous
+  }
   return {
     id: String(evidence.id),
     type: metadata.type ?? "document",
@@ -288,22 +307,34 @@ export function mapBackendEvidence(evidence: BackendEvidence) {
   };
 }
 
-export function mapBackendTestCase(test: BackendTestCase, execution?: BackendTestExecution): TestCase {
+export function mapBackendTestCase(
+  test: BackendTestCase,
+  execution?: BackendTestExecution,
+): TestCase {
   const verdict = execution
-    ? ({ passed: "PASS", failed: "FAIL", blocked: "BLOCKED", not_run: "NOT_RUN", skipped: "NOT_APPLICABLE" } as const)[execution.result]
+    ? (
+        {
+          passed: "PASS",
+          failed: "FAIL",
+          blocked: "BLOCKED",
+          not_run: "NOT_RUN",
+          skipped: "NOT_APPLICABLE",
+        } as const
+      )[execution.result]
     : "NOT_RUN";
   const steps = Array.isArray(test.steps)
     ? test.steps
     : test.steps
       ? test.steps.split("\n").filter(Boolean)
       : [];
-  const criticality = test.priority === "critical"
-    ? "critique"
-    : test.priority === "high"
-      ? "haute"
-      : test.priority === "low"
-        ? "basse"
-        : "moyenne";
+  const criticality =
+    test.priority === "critical"
+      ? "critique"
+      : test.priority === "high"
+        ? "haute"
+        : test.priority === "low"
+          ? "basse"
+          : "moyenne";
   // L'affectation et l'execution sont deux informations distinctes :
   // l'affectation dit QUI doit faire le test, l'execution dit QUI l'a fait.
   // Ecraser l'une par l'autre faisait disparaitre toute repartition du travail.
@@ -317,7 +348,9 @@ export function mapBackendTestCase(test: BackendTestCase, execution?: BackendTes
     featureId: String(test.feature_id),
     name: test.name,
     criticality: criticality as Criticality,
-    type: (test.test_type ?? "fonctionnel") as TestType,
+    // Le serveur stocke le type dans `type` : lire `test_type` seul faisait
+    // retomber tous les cas sur « fonctionnel » au rechargement.
+    type: (test.type ?? test.test_type ?? "fonctionnel") as TestType,
     preconditions: [],
     steps,
     expected: test.expected_result ? [test.expected_result] : [],
@@ -362,7 +395,7 @@ export function mapBackendUser(user: BackendUser): PlatformUser {
       Array.isArray(user.roles) && user.roles.length > 0
         ? [...new Set(user.roles.map(toFrontRole))]
         : [role],
-    active: user.date_suppression == null && locked <= Date.now(),
+    active: user.date_suppression == null && user.is_active !== false && locked <= Date.now(),
   };
 }
 
@@ -374,16 +407,17 @@ export function mapBackendCampaign(campaign: BackendCampaign, project?: BackendP
     projectId: String(campaign.project_id),
     name: campaign.name,
     type: campaign.organization_mode ?? "exploratoire",
-    version: "",
+    version: campaign.release_version ?? "",
     environment: "",
     owner: testLeads[0] ?? "",
-    status: campaign.status === "in_progress"
-      ? "encours"
-      : campaign.status === "completed"
-        ? "terminee"
-        : campaign.status === "planning"
-          ? "planifiee"
-          : "avenir",
+    status:
+      campaign.status === "in_progress"
+        ? "encours"
+        : campaign.status === "completed"
+          ? "terminee"
+          : campaign.status === "planning"
+            ? "planifiee"
+            : "avenir",
     isArchived: campaign.status === "archived",
     startDate: campaign.start_date ?? "",
     endDate: campaign.end_date ?? "",
@@ -393,7 +427,8 @@ export function mapBackendCampaign(campaign: BackendCampaign, project?: BackendP
   } as const;
 }
 
-export function mapBackendProduct(product: BackendProduct) {
+/** `versions` : numeros des versions (releases) du produit, charges a part. */
+export function mapBackendProduct(product: BackendProduct, versions: string[] = []) {
   const qaLead = product.quality_manager_name ?? "";
   return {
     id: String(product.id),
@@ -403,7 +438,7 @@ export function mapBackendProduct(product: BackendProduct) {
     owner: product.owner_name ?? "",
     qaLead,
     qaTeam: qaLead ? [qaLead] : [],
-    versions: [],
+    versions,
     score: 0,
     breakdown: {
       results: 0,
@@ -425,14 +460,13 @@ export function mapBackendProject(project: BackendProject) {
     productId: project.product_id ? String(project.product_id) : "",
     name: project.name,
     objective: project.description ?? "",
-    targetVersion: "",
+    targetVersion: project.target_version ?? "",
     status: project.is_archived ? "termine" : "encours",
     isArchived: project.is_archived ?? false,
     startDate: project.start_date ?? "",
     endDate: project.end_date ?? "",
     manager: leads[0] ?? "",
     qaLead: leads[1] ?? leads[0] ?? "",
-    progress: 0,
   } as const;
 }
 
@@ -445,7 +479,8 @@ export function mapBackendAnomaly(anomaly: BackendAnomaly): Defect {
     rejected: "reouverte",
   } as const;
   const status: DefectStatus = statusMap[anomaly.status as keyof typeof statusMap] ?? "nouvelle";
-  const fullName = (first?: string | null, last?: string | null) => [first, last].filter(Boolean).join(" ");
+  const fullName = (first?: string | null, last?: string | null) =>
+    [first, last].filter(Boolean).join(" ");
   return {
     id: String(anomaly.id),
     productId: anomaly.product_id ? String(anomaly.product_id) : "",
@@ -487,8 +522,18 @@ export function mapBackendRequirement(requirement: BackendRequirement): Requirem
 }
 
 export function mapBackendWatchPoint(point: BackendWatchPoint, productId = "") {
-  const levelMap = { critical: "critique", high: "vigilance", medium: "vigilance", low: "info" } as const;
-  const statusMap = { open: "ouvert", validated: "suivi", passed: "clos", failed: "ouvert" } as const;
+  const levelMap = {
+    critical: "critique",
+    high: "vigilance",
+    medium: "vigilance",
+    low: "info",
+  } as const;
+  const statusMap = {
+    open: "ouvert",
+    validated: "suivi",
+    passed: "clos",
+    failed: "ouvert",
+  } as const;
   const level: WatchLevel = levelMap[point.criticality as keyof typeof levelMap] ?? "vigilance";
   const status: WatchStatus = statusMap[point.status as keyof typeof statusMap] ?? "ouvert";
   const base = {
@@ -522,7 +567,9 @@ export type BackendGoLiveDecision = {
   created_at: string;
 };
 
-export function mapBackendGoLiveChecklistItem(item: BackendGoLiveChecklistItem): GoLiveChecklistItem {
+export function mapBackendGoLiveChecklistItem(
+  item: BackendGoLiveChecklistItem,
+): GoLiveChecklistItem {
   return {
     id: item.id,
     label: item.label,
@@ -547,11 +594,18 @@ export async function getGoLiveChecklist(releaseRef: string) {
   return api<BackendGoLiveChecklistItem[]>(`/go-live/checklist/${encodeURIComponent(releaseRef)}`);
 }
 
-export async function updateGoLiveChecklistItem(releaseRef: string, itemId: string, checked: boolean) {
-  return api<BackendGoLiveChecklistItem>(`/go-live/checklist/${encodeURIComponent(releaseRef)}/items/${itemId}`, {
-    method: "PUT",
-    body: JSON.stringify({ checked }),
-  });
+export async function updateGoLiveChecklistItem(
+  releaseRef: string,
+  itemId: string,
+  checked: boolean,
+) {
+  return api<BackendGoLiveChecklistItem>(
+    `/go-live/checklist/${encodeURIComponent(releaseRef)}/items/${itemId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ checked }),
+    },
+  );
 }
 
 export async function getGoLiveDecisions(releaseRef?: string) {
@@ -559,14 +613,16 @@ export async function getGoLiveDecisions(releaseRef?: string) {
   return api<{ data: BackendGoLiveDecision[] }>(`/go-live/decisions${query}`);
 }
 
-/** Preuves (captures d'écran, images) rattachées à une décision Go Live. */
-export async function getEvidenceByEntity(
-  entityType: string,
-  entityId: number,
-) {
-  return api<{ data: BackendEvidence[] }>(
+/** Preuves (captures, images, journaux) rattachées à une entité. */
+export async function getEvidenceByEntity(entityType: string, entityId: number) {
+  return api<BackendEvidence[]>(
     `/evidence/by-entity/${encodeURIComponent(entityType)}/${entityId}`,
   );
+}
+
+/** Supprime une preuve rattachée à une entité. */
+export async function deleteEvidence(id: number) {
+  return api<void>(`/evidence/${id}`, { method: "DELETE" });
 }
 
 export async function createGoLiveDecision(payload: {
@@ -790,12 +846,37 @@ export function toBackendWatchCriticality(level?: string | null): string {
 
 /* ── Produits ---------------------------------------------------------------- */
 
-export async function createProduct(payload: { name: string | undefined; description: string | undefined; owner_id?: number | null; owner_name?: string | null; quality_manager_id?: number | null }) {
-  return api<{ product: BackendProduct }>("/products", { method: "POST", body: JSON.stringify(payload) });
+export async function createProduct(payload: {
+  name: string | undefined;
+  description: string | undefined;
+  /** Version initiale, obligatoire a la creation. */
+  version: string;
+  owner_id?: number | null;
+  owner_name?: string | null;
+  quality_manager_id?: number | null;
+}) {
+  return api<{ product: BackendProduct }>("/products", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
-export async function updateProductById(id: number, patch: { name: string | undefined; description: string | undefined; owner_id?: number | null; owner_name?: string | null; quality_manager_id?: number | null }) {
-  return api<{ product: BackendProduct }>(`/products/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+export async function updateProductById(
+  id: number,
+  patch: {
+    name: string | undefined;
+    description: string | undefined;
+    /** Ajoute une version a un produit qui n'en a pas encore. */
+    version?: string;
+    owner_id?: number | null;
+    owner_name?: string | null;
+    quality_manager_id?: number | null;
+  },
+) {
+  return api<{ product: BackendProduct }>(`/products/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function deleteProductById(id: number) {
@@ -804,7 +885,9 @@ export async function deleteProductById(id: number) {
 
 /** Archive ou restaure un produit. L'archivage est reversible. */
 export async function archiveProductById(id: number, archive: boolean) {
-  return api<{ product: BackendProduct }>(`/products/${id}/${archive ? "archive" : "unarchive"}`, { method: "PATCH" });
+  return api<{ product: BackendProduct }>(`/products/${id}/${archive ? "archive" : "unarchive"}`, {
+    method: "PATCH",
+  });
 }
 
 /* ── Projets ----------------------------------------------------------------- */
@@ -816,14 +899,22 @@ export type BackendProjectPayload = {
   end_date?: string;
   test_lead_ids?: number[];
   product_id?: number | null;
+  /** Version cible : numero existant ou nouveau pour le produit. */
+  target_version?: string;
 };
 
 export async function createProject(payload: BackendProjectPayload) {
-  return api<{ project: BackendProject }>("/projects", { method: "POST", body: JSON.stringify(payload) });
+  return api<{ project: BackendProject }>("/projects", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function updateProjectById(id: number, patch: BackendProjectPayload) {
-  return api<{ project: BackendProject }>(`/projects/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+  return api<{ project: BackendProject }>(`/projects/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
 /**
@@ -831,7 +922,9 @@ export async function updateProjectById(id: number, patch: BackendProjectPayload
  * les campagnes liees ; contrairement au DELETE, il ne detruit rien.
  */
 export async function archiveProjectById(id: number, archive: boolean) {
-  return api<{ project: BackendProject }>(`/projects/${id}/${archive ? "archive" : "unarchive"}`, { method: "PATCH" });
+  return api<{ project: BackendProject }>(`/projects/${id}/${archive ? "archive" : "unarchive"}`, {
+    method: "PATCH",
+  });
 }
 
 export async function deleteProjectById(id: number) {
@@ -852,15 +945,31 @@ export type BackendCampaignPayload = {
   testers?: number[];
   developers?: number[];
   release_id?: number | null;
+  /** Version visee : numero existant ou nouveau pour le produit du projet. */
+  version?: string;
   environment_id?: number | null;
 };
 
 export async function createCampaign(payload: BackendCampaignPayload) {
-  return api<{ campaign: BackendCampaign }>("/campaigns", { method: "POST", body: JSON.stringify(payload) });
+  return api<{ campaign: BackendCampaign }>("/campaigns", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
-export async function updateCampaignById(id: number, patch: { name: string | undefined; status: string | undefined; start_date: string | undefined; end_date: string | undefined }) {
-  return api<{ campaign: BackendCampaign }>(`/campaigns/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+export async function updateCampaignById(
+  id: number,
+  patch: {
+    name: string | undefined;
+    status: string | undefined;
+    start_date: string | undefined;
+    end_date: string | undefined;
+  },
+) {
+  return api<{ campaign: BackendCampaign }>(`/campaigns/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function deleteCampaignById(id: number) {
@@ -869,12 +978,40 @@ export async function deleteCampaignById(id: number) {
 
 /* ── Fonctionnalités --------------------------------------------------------- */
 
-export async function createFeature(payload: { campaign_id: number; name: string; description?: string; priority?: string; module?: string }) {
-  return api<{ feature: BackendFeature }>("/features", { method: "POST", body: JSON.stringify(payload) });
+export async function createFeature(payload: {
+  campaign_id: number;
+  name: string;
+  description?: string;
+  priority?: string;
+  module?: string;
+  coverage: Partial<Record<TestType, boolean>> | null | undefined;
+}) {
+  return api<{ feature: BackendFeature }>("/features", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
-export async function updateFeatureById(id: number, patch: { name: string | undefined; description: string | undefined; priority: string | undefined; module: string | undefined }) {
-  return api<{ feature: BackendFeature }>(`/features/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+export async function updateFeatureById(
+  id: number,
+  patch: {
+    name: string | undefined;
+    description: string | undefined;
+    priority: string | undefined;
+    module: string | undefined;
+    coverage: Partial<Record<TestType, boolean>> | null | undefined;
+  },
+) {
+  return api<{ feature: BackendFeature }>(`/features/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      name: patch.name,
+      description: patch.description,
+      priority: patch.priority,
+      module: patch.module,
+      coverage: patch.coverage,
+    }),
+  });
 }
 
 export async function deleteFeatureById(id: number) {
@@ -885,7 +1022,7 @@ export async function deleteFeatureById(id: number) {
 
 export async function createTestCase(payload: {
   campaign_id?: number;
-  feature_id?: number;
+  feature_id: number | undefined;
   name: string;
   description?: string;
   expected_result?: string;
@@ -902,7 +1039,7 @@ export async function createTestCase(payload: {
     description: payload.description,
     expected_result: payload.expected_result,
     priority: payload.priority,
-    test_type: payload.type,
+    type: payload.type,
     assigned_to: payload.assigned_to ?? null,
   };
   if (payload.steps) body["steps"] = payload.steps.join("\n");
@@ -955,11 +1092,25 @@ export async function createExecution(payload: {
   notes: string | undefined;
   actual_behavior: string | undefined;
 }) {
-  return api<BackendTestExecution>("/test-executions", { method: "POST", body: JSON.stringify(payload) });
+  return api<BackendTestExecution>("/test-executions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
-export async function updateExecutionById(id: number, patch: { result: string | undefined; notes: string | undefined; actual_behavior: string | undefined; duration_seconds?: number | null }) {
-  return api<BackendTestExecution>(`/test-executions/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+export async function updateExecutionById(
+  id: number,
+  patch: {
+    result: string | undefined;
+    notes: string | undefined;
+    actual_behavior: string | undefined;
+    duration_seconds?: number | null;
+  },
+) {
+  return api<BackendTestExecution>(`/test-executions/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function deleteExecutionById(id: number) {
@@ -977,11 +1128,24 @@ export async function createAnomaly(payload: {
   test_case_id?: number;
   correction_due_date?: string;
 }) {
-  return api<{ anomaly: BackendAnomaly }>("/anomalies", { method: "POST", body: JSON.stringify(payload) });
+  return api<{ anomaly: BackendAnomaly }>("/anomalies", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
-export async function updateAnomalyById(id: number, patch: { description: string | undefined; status: string | undefined; correction_due_date: string | undefined }) {
-  return api<{ anomaly: BackendAnomaly }>(`/anomalies/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+export async function updateAnomalyById(
+  id: number,
+  patch: {
+    description: string | undefined;
+    status: string | undefined;
+    correction_due_date: string | undefined;
+  },
+) {
+  return api<{ anomaly: BackendAnomaly }>(`/anomalies/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function deleteAnomalyById(id: number) {
@@ -1002,11 +1166,17 @@ export type RequirementPayload = {
 };
 
 export async function createRequirement(payload: RequirementPayload) {
-  return api<BackendRequirement>("/requirements", { method: "POST", body: JSON.stringify(payload) });
+  return api<BackendRequirement>("/requirements", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function updateRequirementById(id: number, patch: Partial<RequirementPayload>) {
-  return api<BackendRequirement>(`/requirements/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+  return api<BackendRequirement>(`/requirements/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function deleteRequirementById(id: number) {
@@ -1028,8 +1198,19 @@ export async function createWatchPoint(payload: {
   return api<BackendWatchPoint>("/watch-points", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export async function updateWatchPointById(id: number, patch: { title: string | undefined; description: string | undefined; criticality: string | undefined; status: string | undefined }) {
-  return api<BackendWatchPoint>(`/watch-points/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+export async function updateWatchPointById(
+  id: number,
+  patch: {
+    title?: string;
+    description?: string;
+    criticality?: string;
+    status?: string;
+  },
+) {
+  return api<BackendWatchPoint>(`/watch-points/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function deleteWatchPointById(id: number) {
@@ -1042,12 +1223,35 @@ export async function listReleases(productId: number) {
   return api<BackendRelease[]>(`/products/${productId}/releases`);
 }
 
-export async function createRelease(productId: number, payload: { version: string | undefined; description?: string; status: string | undefined; planned_date: string | undefined }) {
-  return api<{ release: BackendRelease }>(`/products/${productId}/releases`, { method: "POST", body: JSON.stringify(payload) });
+export async function createRelease(
+  productId: number,
+  payload: {
+    version: string | undefined;
+    description?: string;
+    status: string | undefined;
+    planned_date: string | undefined;
+  },
+) {
+  return api<{ release: BackendRelease }>(`/products/${productId}/releases`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
-export async function updateReleaseById(productId: number, releaseId: number, patch: { version: string | undefined; description: string | undefined; status: string | undefined; planned_date: string | undefined }) {
-  return api<{ release: BackendRelease }>(`/products/${productId}/releases/${releaseId}`, { method: "PUT", body: JSON.stringify(patch) });
+export async function updateReleaseById(
+  productId: number,
+  releaseId: number,
+  patch: {
+    version: string | undefined;
+    description: string | undefined;
+    status: string | undefined;
+    planned_date: string | undefined;
+  },
+) {
+  return api<{ release: BackendRelease }>(`/products/${productId}/releases/${releaseId}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function deleteReleaseById(productId: number, releaseId: number) {
@@ -1082,6 +1286,10 @@ export type BackendReferentialRule = {
   label: string;
   threshold: string;
   active: boolean;
+  value?: number | string | null;
+  unit?: "score" | "percent" | "days" | "count" | null;
+  comparator?: "gte" | "lte" | null;
+  mode?: "blocking" | "warning";
   created_at?: string;
   updated_at?: string;
 };
@@ -1100,7 +1308,9 @@ export async function updateReferentialRule(
   });
 }
 
-export async function createReferentialRule(data: Omit<BackendReferentialRule, "created_at" | "updated_at">) {
+export async function createReferentialRule(
+  data: Omit<BackendReferentialRule, "created_at" | "updated_at">,
+) {
   return api<BackendReferentialRule>("/referential-rules", {
     method: "POST",
     body: JSON.stringify(data),
@@ -1159,6 +1369,28 @@ export const NOTIFICATION_TYPES_BACKEND_TO_FRONT: Record<string, NotificationTyp
   password_forgot: "system",
 };
 
+/**
+ * Titre lisible par type de notification backend. Sans lui, la cloche
+ * affichait le code brut (« anomaly_reported »).
+ */
+const NOTIFICATION_TITLES: Record<string, string> = {
+  anomaly_reported: "Anomalie assignée",
+  anomaly_resolved: "Anomalie résolue et validée",
+  resolution_signaled: "Résolution signalée",
+  reopened: "Anomalie réouverte",
+  feature_conforme: "Fonctionnalité conforme",
+  task_assigned: "Tâche assignée",
+  test_case_assigned: "Cas de test assigné",
+  member_added: "Ajout à une campagne",
+  campaign_created: "Nouvelle campagne",
+  campaign_completed: "Campagne terminée",
+  product_created: "Nouveau produit",
+  project_created: "Nouveau projet",
+  project_archived: "Projet archivé",
+  go_live_decision: "Décision Go-Live",
+  password_forgot: "Mot de passe oublié",
+};
+
 export function mapBackendNotificationToApp(
   n: BackendNotification,
   userId: string,
@@ -1175,8 +1407,10 @@ export function mapBackendNotificationToApp(
     id: String(n.id),
     userId,
     type: NOTIFICATION_TYPES_BACKEND_TO_FRONT[n.notification_type] ?? "system",
-    title: n.notification_type || "system",
-    message: n.description ?? "",
+    title: NOTIFICATION_TITLES[n.notification_type] ?? (n.notification_type || "system"),
+    // Les notifications d'anomalie n'ont pas toujours de description propre :
+    // la description de l'anomalie sert alors de message.
+    message: n.description ?? n.anomaly_description ?? "",
     read: n.is_read,
     createdAt,
   };

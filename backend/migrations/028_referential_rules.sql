@@ -22,6 +22,6 @@ INSERT INTO referential_rules (id, domain, label, threshold, active) VALUES
   ('RG-8',  'Anomalies',  'Délai de correction gravité haute', '≤ 7 jours',             TRUE),
   ('RG-9',  'Go Live',    'Anomalies hautes ouvertes tolérées','0',                     TRUE),
   ('RG-10', 'Go Live',    'Complétude checklist minimale pour GO', '≥ 85 %',            FALSE)
-ON CONFLICT (id) DO UPDATE SET
-  domain = EXCLUDED.domain, label = EXCLUDED.label,
-  threshold = EXCLUDED.threshold, active = EXCLUDED.active, updated_at = NOW();
+-- DO NOTHING : les migrations sont rejouees a chaque demarrage. Un DO UPDATE
+-- remettait les regles aux valeurs d'origine et effacait les reglages de l'admin.
+ON CONFLICT (id) DO NOTHING;

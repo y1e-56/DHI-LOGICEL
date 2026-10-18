@@ -6,8 +6,9 @@ import { AppShell } from "@/components/dhi/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useStore, loadSnapshot } from "@/lib/dhi-store";
-import { projects as seedProjects, type ProjectDocumentType } from "@/lib/dhi-data";
+import { PROJECT_DOC_TYPE_LABEL, projects as seedProjects, type ProjectDocumentType } from "@/lib/dhi-data";
 import { projectTabs } from "@/lib/dhi-nav";
 import { useI18n } from "@/lib/i18n";
 import { getUser, projectVisibleTo } from "@/lib/access";
@@ -37,7 +38,10 @@ function AddProjectDocument() {
   const { products, projects, addProjectDocument } = useStore();
   const project = projects.find((p) => p.id === projectId);
 
-  const [type, setType] = useState<ProjectDocumentType>("cdc_sprint");
+  // Seuls les types que le role courant peut deposer sont proposes : un type
+  // hors matrice grisait le bouton d'enregistrement sans explication.
+  const allowedTypes = (Object.keys(PROJECT_DOC_TYPE_LABEL) as ProjectDocumentType[]).filter((k) => canUploadProjectDoc(k));
+  const [type, setType] = useState<ProjectDocumentType>(allowedTypes[0] ?? "cdc_sprint");
   const [name, setName] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileSize, setFileSize] = useState<number | null>(null);
@@ -138,15 +142,11 @@ function AddProjectDocument() {
 
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="d-type" className="text-sm font-medium">
-                  {t("pages.documents.type")}
-                </Label>
-                <Input
-                  id="d-type"
+                <Label className="text-sm font-medium">{t("pages.documents.type")}</Label>
+                <SearchableSelect
                   value={type}
-                  onChange={(e) => setType(e.target.value as ProjectDocumentType)}
-                  placeholder="Ex. Cahier des charges"
-                  required
+                  onValueChange={(v) => setType(v as ProjectDocumentType)}
+                  options={allowedTypes.map((value) => ({ value, label: PROJECT_DOC_TYPE_LABEL[value] }))}
                   className="h-11"
                 />
               </div>

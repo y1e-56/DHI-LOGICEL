@@ -48,6 +48,9 @@ const createSchema = z.object({
   testers: z.array(z.number()).optional(),
   developers: z.array(z.number()).optional(),
   release_id: z.number().int().nullable().optional(),
+  // Version visee obligatoire (CDC RG-005) : numero existant ou nouveau pour le
+  // produit du projet ; a defaut, un release_id deja connu.
+  version: z.string().trim().min(1, 'Version requise').max(50).optional(),
   environment_id: z.number().int().nullable().optional(),
   objective_audio_data: z.string().max(100_000_000).optional(),
   objective_audio_type: z.string().max(100).optional(),

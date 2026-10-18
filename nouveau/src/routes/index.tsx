@@ -11,6 +11,7 @@ import {
 import { AppShell } from "@/components/dhi/AppShell";
 import { HealthBadge, KpiCard, Panel, QualityBar, ScoreValue } from "@/components/dhi/indicators";
 import { campaignStats, productScore, useStore } from "@/lib/dhi-store";
+import { projectProgress } from "@/lib/progress";
 import { CAMPAIGN_STATUS_LABEL, PROJECT_STATUS_LABEL } from "@/lib/dhi-data";
 import { useI18n } from "@/lib/i18n";
 import { api } from "@/lib/api";
@@ -57,7 +58,9 @@ function Dashboard() {
     if (!localStorage.getItem("token")) return;
     void api<DashboardStats>("/dashboard/stats")
       .then(setBackendStats)
-      .catch((error) => console.error("[Dashboard] Impossible de charger les statistiques backend", error));
+      .catch((error) =>
+        console.error("[Dashboard] Impossible de charger les statistiques backend", error),
+      );
   }, []);
 
   const activeProjects = projects.filter((pr) => pr.status === "encours");
@@ -175,6 +178,7 @@ function Dashboard() {
           <ul className="divide-y divide-border">
             {(activeProjects.length ? activeProjects : projects).slice(0, 5).map((pr) => {
               const product = products.find((p) => p.id === pr.productId);
+              const progress = projectProgress(tests, campaigns, pr.id);
               return (
                 <li key={pr.id}>
                   <Link
@@ -184,9 +188,9 @@ function Dashboard() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-medium">{pr.name}</p>
-                      <span className="num text-xs text-muted-foreground">{pr.progress} %</span>
+                      <span className="num text-xs text-muted-foreground">{progress} %</span>
                     </div>
-                    <QualityBar value={pr.progress} neutral className="mt-1.5" />
+                    <QualityBar value={progress} neutral className="mt-1.5" />
                     <p className="mt-1 text-xs text-muted-foreground">
                       {product?.name ?? t("common.produit")} · {PROJECT_STATUS_LABEL[pr.status]} ·{" "}
                       {t("pages.root.target")} {pr.targetVersion}

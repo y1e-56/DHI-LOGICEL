@@ -1,5 +1,5 @@
-import { createFileRoute, Link, Outlet, useMatches } from "@tanstack/react-router";
-import { ArrowLeft, Plus } from "lucide-react";
+import { createFileRoute, Link, Outlet, useMatches, useNavigate } from "@tanstack/react-router";
+import { Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/dhi/AppShell";
@@ -20,13 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -44,9 +38,11 @@ import {
 } from "@/lib/dhi-data";
 import { projectTabs } from "@/lib/dhi-nav";
 import { campaignStats, loadSnapshot, productScore, useStore } from "@/lib/dhi-store";
+import { projectProgress } from "@/lib/progress";
 import { useI18n } from "@/lib/i18n";
 import { getUser, projectVisibleTo } from "@/lib/access";
-import { canCreateProject } from "@/lib/role-protection";
+import { isInteractiveClick } from "@/lib/clickable-row";
+import { canCreateCampaign, canCreateProject } from "@/lib/role-protection";
 import { ProjectAccessDenied } from "@/components/dhi/AccessDenied";
 
 export const Route = createFileRoute("/projets/$projectId")({
@@ -65,8 +61,18 @@ export const Route = createFileRoute("/projets/$projectId")({
 function ProjectDetail() {
   const { t } = useI18n();
   const { projectId } = Route.useParams();
-  const { products, projects, campaigns, tests, releases, goLiveDecisions, features, defects, addRelease } =
-    useStore();
+  const navigate = useNavigate();
+  const {
+    products,
+    projects,
+    campaigns,
+    tests,
+    releases,
+    goLiveDecisions,
+    features,
+    defects,
+    addRelease,
+  } = useStore();
 
   const matches = useMatches();
   const project = projects.find((p) => p.id === projectId);
@@ -93,6 +99,7 @@ function ProjectDetail() {
 
   const product = products.find((p) => p.id === project.productId);
   const score = product ? productScore(product) : 0;
+  const progress = projectProgress(tests, campaigns, project.id);
   const projCampaigns = campaigns.filter((c) => c.projectId === project.id);
 
   const projReleases = releases.filter((r) => r.projectId === project.id);
@@ -112,14 +119,7 @@ function ProjectDetail() {
       )} ${project.targetVersion}`}
       breadcrumb={[t("nav.qualite"), t("nav.projets"), project.name]}
       tabs={projectTabs(projectId)}
-      actions={
-        <Link
-          to="/projets"
-          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-        >
-          <ArrowLeft className="size-4" /> {t("pages.project_detail.all_projects")}
-        </Link>
-      }
+      backTo={{ to: "/projets" }}
     >
       <div className="grid gap-4 lg:grid-cols-3">
         <Panel title={t("pages.project_detail.identity_title")} className="lg:col-span-2">
@@ -179,8 +179,8 @@ function ProjectDetail() {
                 {t("pages.project_detail.progress")}
               </dt>
               <dd className="mt-2">
-                <QualityBar value={project.progress} neutral />
-                <p className="num mt-1 text-xs text-muted-foreground">{project.progress} %</p>
+                <QualityBar value={progress} neutral />
+                <p className="num mt-1 text-xs text-muted-foreground">{progress} %</p>
               </dd>
             </div>
           </dl>
@@ -225,7 +225,11 @@ function ProjectDetail() {
               {projReleases.map((r) => (
                 <li
                   key={r.id}
-                  className="flex justify-between rounded-md border border-border px-3 py-2"
+                  className="flex cursor-pointer justify-between rounded-md border border-border px-3 py-2 transition-colors hover:border-border-strong"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({ to: "/go-live", search: { releaseId: r.id } });
+                  }}
                 >
                   <span className="num font-medium">{r.version}</span>
                   <span className="text-muted-foreground">
@@ -260,7 +264,20 @@ function ProjectDetail() {
         </Panel>
       </div>
 
-      <Panel title={t("pages.project_detail.campaigns_of_project")}>
+      <Panel
+        title={t("pages.project_detail.campaigns_of_project")}
+        actions={
+          canCreateCampaign() ? (
+            <Link
+              to="/campagnes/ajouter"
+              search={{ projectId: project.id }}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              {t("pages.campaigns.new_campaign")}
+            </Link>
+          ) : undefined
+        }
+      >
         <Table>
           <TableHeader>
             <TableRow>
@@ -274,7 +291,17 @@ function ProjectDetail() {
             {projCampaigns.map((c) => {
               const st = campaignStats(tests, c.id);
               return (
-                <TableRow key={c.id}>
+                <TableRow
+                  key={c.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({
+                      to: "/campagnes/$campaignId",
+                      params: { campaignId: c.id },
+                    });
+                  }}
+                >
                   <TableCell>
                     <Link
                       to="/campagnes/$campaignId"
@@ -298,7 +325,11 @@ function ProjectDetail() {
               <TableRow>
                 <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
                   {t("pages.project_detail.no_campaigns")}{" "}
-                  <Link to="/campagnes" className="text-primary hover:underline">
+                  <Link
+                    to="/campagnes/ajouter"
+                    search={{ projectId: project.id }}
+                    className="text-primary hover:underline"
+                  >
                     {t("pages.project_detail.create_campaign")}
                   </Link>
                   .
@@ -358,7 +389,12 @@ function NewReleaseDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="ghost" className="size-7" title={t("pages.releases.new_release")}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7"
+          title={t("pages.releases.new_release")}
+        >
           <Plus className="size-4" />
         </Button>
       </DialogTrigger>
@@ -385,52 +421,34 @@ function NewReleaseDialog({
           </div>
           <div className="space-y-2">
             <Label>{t("pages.releases.environment")}</Label>
-            <Select value={environment} onValueChange={setEnvironment}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {["DEV", "RECETTE", "PREPROD", "PROD"].map((env) => (
-                  <SelectItem key={env} value={env}>
-                    {env}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={environment}
+              onValueChange={setEnvironment}
+              options={["DEV", "RECETTE", "PREPROD", "PROD"].map((env) => ({
+                value: env,
+                label: env,
+              }))}
+            />
           </div>
           <div className="space-y-2">
             <Label>{t("pages.releases.status")}</Label>
-            <Select
+            <SearchableSelect
               value={status}
               onValueChange={(v) => setStatus(v as ReleaseStatus)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(
-                  [
-                    "planning",
-                    "in_dev",
-                    "in_test",
-                    "ready",
-                    "released",
-                    "archived",
-                  ] as ReleaseStatus[]
-                ).map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {RELEASE_STATUS_LABEL[s]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={(
+                [
+                  "planning",
+                  "in_dev",
+                  "in_test",
+                  "ready",
+                  "released",
+                  "archived",
+                ] as ReleaseStatus[]
+              ).map((s) => ({ value: s, label: RELEASE_STATUS_LABEL[s] }))}
+            />
           </div>
           <div className="flex items-center justify-end gap-3 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               {t("actions.annuler")}
             </Button>
             <Button type="submit">{t("pages.releases.create")}</Button>

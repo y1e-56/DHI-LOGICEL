@@ -11,13 +11,7 @@ import { GoLiveScreenshots } from "@/components/dhi/GoLiveScreenshots";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { GOLIVE_VERDICT_LABEL, type GoLiveVerdict } from "@/lib/dhi-data";
 
@@ -58,7 +52,12 @@ function GoLivePage() {
   } = useStore();
 
   const pending = releases.filter((r) => r.status !== "released");
-  const [releaseId, setReleaseId] = useState(pending[0]?.id ?? releases[0]?.id ?? "");
+  const { releaseId: releaseIdParam } = Route.useSearch();
+  const [releaseId, setReleaseId] = useState(
+    releaseIdParam && releases.some((r) => r.id === releaseIdParam)
+      ? releaseIdParam
+      : (pending[0]?.id ?? releases[0]?.id ?? ""),
+  );
   const [verdict, setVerdict] = useState<GoLiveVerdict>("GO");
   const [decider, setDecider] = useState<string>(currentUser?.name ?? "Jean Dupont");
   const [justification, setJustification] = useState("");
@@ -92,15 +91,11 @@ function GoLivePage() {
     const tooBig = images.filter((f) => f.size > MAX_SHOT_BYTES);
     const accepted = images.filter((f) => f.size <= MAX_SHOT_BYTES);
     if (tooBig.length > 0) {
-      toast.error(
-        t("pages.go_live.image_too_big").replace("{n}", String(tooBig.length)),
-      );
+      toast.error(t("pages.go_live.image_too_big").replace("{n}", String(tooBig.length)));
     }
     if (accepted.length === 0) return;
     if (shots.length + accepted.length > MAX_SCREENSHOTS) {
-      toast.error(
-        t("pages.go_live.max_screenshots").replace("{n}", String(MAX_SCREENSHOTS)),
-      );
+      toast.error(t("pages.go_live.max_screenshots").replace("{n}", String(MAX_SCREENSHOTS)));
       return;
     }
     setShots((prev) => [
@@ -116,7 +111,13 @@ function GoLivePage() {
     });
   };
 
-  const decisionRoles: string[] = ["admin", "chef_testeur", "quality_manager", "qa_lead", "approver"];
+  const decisionRoles: string[] = [
+    "admin",
+    "chef_testeur",
+    "quality_manager",
+    "qa_lead",
+    "approver",
+  ];
   const userRoles = currentUser
     ? Array.isArray(currentUser.roles) && currentUser.roles.length > 0
       ? currentUser.roles
@@ -209,9 +210,7 @@ function GoLivePage() {
       for (const shot of shots) URL.revokeObjectURL(shot.url);
       setShots([]);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : t("pages.go_live.decision_failed"),
-      );
+      toast.error(error instanceof Error ? error.message : t("pages.go_live.decision_failed"));
     } finally {
       setSaving(false);
     }
@@ -255,21 +254,15 @@ function GoLivePage() {
           <div className="grid gap-3">
             <div className="grid gap-1.5">
               <Label>{t("pages.go_live.release")}</Label>
-              <Select value={releaseId} onValueChange={setReleaseId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t("pages.go_live.choose")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {releases.map((r) => {
-                    const pr = projects.find((p) => p.id === r.projectId);
-                    return (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.version} — {pr?.name ?? r.projectId}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={releaseId}
+                onValueChange={setReleaseId}
+                options={releases.map((r) => {
+                  const pr = projects.find((p) => p.id === r.projectId);
+                  return { value: r.id, label: `${r.version} — ${pr?.name ?? r.projectId}` };
+                })}
+                placeholder={t("pages.go_live.choose")}
+              />
             </div>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
@@ -350,23 +343,23 @@ function GoLivePage() {
               className="flex items-start gap-3 rounded-md border border-border px-3 py-2"
             >
               {canDecide ? (
-              <Checkbox
-                checked={item.checked}
-                onCheckedChange={() => toggleChecklistItem(releaseId, item.id)}
-                className="mt-0.5"
-              />
-            ) : (
-              <span
-                className={cn(
-                  "mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold",
-                  item.checked
-                    ? "border-success bg-success text-white"
-                    : "border-border bg-muted text-muted-foreground",
-                )}
-              >
-                {item.checked ? "✓" : ""}
-              </span>
-            )}
+                <Checkbox
+                  checked={item.checked}
+                  onCheckedChange={() => toggleChecklistItem(releaseId, item.id)}
+                  className="mt-0.5"
+                />
+              ) : (
+                <span
+                  className={cn(
+                    "mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold",
+                    item.checked
+                      ? "border-success bg-success text-success-foreground"
+                      : "border-border bg-muted text-muted-foreground",
+                  )}
+                >
+                  {item.checked ? "✓" : ""}
+                </span>
+              )}
               <div className="flex min-w-0 flex-1 justify-between gap-2 text-sm">
                 <span>{item.label}</span>
                 <span className="num shrink-0 text-muted-foreground">{item.weight} %</span>
@@ -385,18 +378,14 @@ function GoLivePage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label>{t("pages.go_live.verdict")}</Label>
-                <Select value={verdict} onValueChange={(v) => setVerdict(v as GoLiveVerdict)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(GOLIVE_VERDICT_LABEL) as GoLiveVerdict[]).map((v) => (
-                      <SelectItem key={v} value={v}>
-                        {GOLIVE_VERDICT_LABEL[v]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={verdict}
+                  onValueChange={(v) => setVerdict(v as GoLiveVerdict)}
+                  options={(Object.keys(GOLIVE_VERDICT_LABEL) as GoLiveVerdict[]).map((v) => ({
+                    value: v,
+                    label: GOLIVE_VERDICT_LABEL[v],
+                  }))}
+                />
               </div>
               <div className="grid gap-1.5">
                 <Label>{t("pages.go_live.decider")}</Label>
@@ -478,9 +467,7 @@ function GoLivePage() {
             </Button>
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            {t("pages.go_live.no_permission")}
-          </p>
+          <p className="text-sm text-muted-foreground">{t("pages.go_live.no_permission")}</p>
         )}
       </Panel>
 
@@ -512,6 +499,8 @@ function GoLivePage() {
 }
 
 export const Route = createFileRoute("/go-live")({
+  validateSearch: (search: Record<string, unknown>): { releaseId?: string } =>
+    typeof search["releaseId"] === "string" ? { releaseId: search["releaseId"] } : {},
   head: () => ({
     meta: [
       { title: "Go Live Center — DHI Quality Platform" },

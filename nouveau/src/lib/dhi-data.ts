@@ -18,8 +18,7 @@ export type Health = "sain" | "surveiller" | "risque" | "critique";
 export type Criticality = "critique" | "haute" | "moyenne" | "basse";
 export type Severity = "haute" | "moyenne" | "basse";
 export type CampaignStatus = "planifiee" | "encours" | "terminee" | "avenir";
-export type DefectStatus =
-  | "nouvelle" | "encorrection" | "a_retester" | "fermee" | "reouverte";
+export type DefectStatus = "nouvelle" | "encorrection" | "a_retester" | "fermee" | "reouverte";
 export type TestCategory = "fonctionnels" | "non_fonctionnels" | "speciaux";
 export type Verdict =
   "PASS" | "PASS_WITH_RESERVATION" | "FAIL" | "BLOCKED" | "NOT_RUN" | "NOT_APPLICABLE";
@@ -215,7 +214,6 @@ export interface Project {
   endDate: string;
   manager: string;
   qaLead: string;
-  progress: number;
   /** Projet archive : reste consultable mais exclu des vues par defaut. */
   isArchived?: boolean;
   /** Etat archive d'origine, conserve quand l'archivage vient du produit parent. */
@@ -300,11 +298,7 @@ export interface ProductDocument {
 }
 
 export type ProjectDocumentType =
-  | "cdc_sprint"
-  | "spec_features"
-  | "cas_de_test"
-  | "rapport_campagne"
-  | (string & {});
+  "cdc_sprint" | "spec_features" | "cas_de_test" | "rapport_campagne" | (string & {});
 
 export const PROJECT_DOC_TYPE_LABEL: Record<ProjectDocumentType, string> = {
   cdc_sprint: "Cahier des charges sprint",
@@ -325,11 +319,7 @@ export interface ProjectDocument {
 }
 
 export type CampaignDocumentType =
-  | "scenario_test"
-  | "rapport_execution"
-  | "preuve_test"
-  | "autre"
-  | (string & {});
+  "scenario_test" | "rapport_execution" | "preuve_test" | "autre" | (string & {});
 
 export const CAMPAIGN_DOC_TYPE_LABEL: Record<CampaignDocumentType, string> = {
   scenario_test: "Scénario de test",
@@ -350,11 +340,7 @@ export interface CampaignDocument {
 }
 
 export type FeatureDocumentType =
-  | "specification"
-  | "plan_test"
-  | "preuve_recette"
-  | "autre"
-  | (string & {});
+  "specification" | "plan_test" | "preuve_recette" | "autre" | (string & {});
 
 export const FEATURE_DOC_TYPE_LABEL: Record<FeatureDocumentType, string> = {
   specification: "Spécification",
@@ -430,12 +416,22 @@ export interface AuditEntry {
   at: string;
 }
 
+export type RuleUnit = "score" | "percent" | "days" | "count";
+export type RuleComparator = "gte" | "lte";
+/** blocking : l'action est refusee ; warning : elle demande une confirmation. */
+export type RuleMode = "blocking" | "warning";
+
 export interface ReferentialRule {
   id: string;
   domain: string;
   label: string;
+  /** Libelle affiche du seuil, derive des champs structures. */
   threshold: string;
   active: boolean;
+  value?: number | null;
+  unit?: RuleUnit | null;
+  comparator?: RuleComparator | null;
+  mode?: RuleMode;
 }
 
 export interface PlatformUser {
@@ -467,6 +463,15 @@ export const CRITICALITY_LABEL: Record<Criticality, string> = {
   moyenne: "Moyenne",
   basse: "Basse",
 };
+
+/**
+ * Une anomalie nait d'un cas de test non valide : seuls ces verdicts autorisent
+ * sa declaration. Aligne sur ANOMALY_ALLOWED_RESULTS du backend (failed, blocked).
+ */
+export const DEFECT_ALLOWED_VERDICTS: readonly Verdict[] = ["FAIL", "BLOCKED"];
+
+export const canReportDefect = (verdict: Verdict): boolean =>
+  DEFECT_ALLOWED_VERDICTS.includes(verdict);
 
 export const SEVERITY_LABEL: Record<Severity, string> = {
   haute: "Haute",
@@ -595,16 +600,133 @@ export const ROLE_LABEL: Record<AppRole, string> = {
 
 /* Pages accessibles par rôle */
 export const ROLE_PAGES: Record<AppRole, string[]> = {
-  admin: ["/", "/dashboard-admin", "/alertes", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/referentiels", "/execution", "/administration", "/administration/ajouter-utilisateur", "/audit"],
-  qa_lead: ["/", "/alertes", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/referentiels", "/execution", "/audit"],
-  quality_manager: ["/", "/alertes", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/referentiels", "/execution", "/audit"],
-  product_owner: ["/", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/audit"],
-  chef_projet: ["/", "/dashboard-chef", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/execution", "/audit"],
-  chef_testeur: ["/", "/dashboard-testeur", "/notifications", "/produits", "/projets", "/campagnes", "/campagnes/ajouter", "/go-live", "/points-a-surveiller", "/anomalies", "/execution", "/audit"],
-  testeur: ["/", "/dashboard-testeur", "/notifications", "/campagnes", "/anomalies", "/execution", "/audit"],
-  developpeur: ["/", "/dashboard-developpeur", "/notifications", "/anomalies", "/campagnes", "/audit"],
+  admin: [
+    "/",
+    "/dashboard-admin",
+    "/alertes",
+    "/notifications",
+    "/produits",
+    "/projets",
+    "/fonctionnalites",
+    "/exigences",
+    "/couverture",
+    "/campagnes",
+    "/campagnes/ajouter",
+    "/go-live",
+    "/points-a-surveiller",
+    "/anomalies",
+    "/referentiels",
+    "/execution",
+    "/administration",
+    "/administration/ajouter-utilisateur",
+    "/audit",
+  ],
+  qa_lead: [
+    "/",
+    "/alertes",
+    "/notifications",
+    "/produits",
+    "/projets",
+    "/fonctionnalites",
+    "/exigences",
+    "/couverture",
+    "/campagnes",
+    "/campagnes/ajouter",
+    "/go-live",
+    "/points-a-surveiller",
+    "/anomalies",
+    "/referentiels",
+    "/execution",
+    "/audit",
+  ],
+  quality_manager: [
+    "/",
+    "/alertes",
+    "/notifications",
+    "/produits",
+    "/projets",
+    "/fonctionnalites",
+    "/exigences",
+    "/couverture",
+    "/campagnes",
+    "/campagnes/ajouter",
+    "/go-live",
+    "/points-a-surveiller",
+    "/anomalies",
+    "/referentiels",
+    "/execution",
+    "/audit",
+  ],
+  product_owner: [
+    "/",
+    "/notifications",
+    "/produits",
+    "/projets",
+    "/fonctionnalites",
+    "/exigences",
+    "/audit",
+  ],
+  chef_projet: [
+    "/",
+    "/dashboard-chef",
+    "/notifications",
+    "/produits",
+    "/projets",
+    "/fonctionnalites",
+    "/exigences",
+    "/couverture",
+    "/campagnes",
+    "/campagnes/ajouter",
+    "/go-live",
+    "/points-a-surveiller",
+    "/anomalies",
+    "/execution",
+    "/audit",
+  ],
+  chef_testeur: [
+    "/",
+    "/dashboard-testeur",
+    "/notifications",
+    "/produits",
+    "/projets",
+    "/campagnes",
+    "/campagnes/ajouter",
+    "/go-live",
+    "/points-a-surveiller",
+    "/anomalies",
+    "/execution",
+    "/audit",
+  ],
+  testeur: [
+    "/",
+    "/dashboard-testeur",
+    "/notifications",
+    "/campagnes",
+    "/anomalies",
+    "/execution",
+    "/audit",
+  ],
+  developpeur: [
+    "/",
+    "/dashboard-developpeur",
+    "/notifications",
+    "/anomalies",
+    "/campagnes",
+    "/audit",
+  ],
   approver: ["/", "/notifications", "/go-live", "/points-a-surveiller", "/audit"],
-  lecteur: ["/", "/notifications", "/produits", "/projets", "/fonctionnalites", "/exigences", "/couverture", "/campagnes", "/go-live", "/points-a-surveiller"],
+  lecteur: [
+    "/",
+    "/notifications",
+    "/produits",
+    "/projets",
+    "/fonctionnalites",
+    "/exigences",
+    "/couverture",
+    "/campagnes",
+    "/go-live",
+    "/points-a-surveiller",
+  ],
 };
 
 /*  --------------------------------------------------------------------------  */
@@ -686,7 +808,9 @@ export const healthOf = (
 };
 
 /** Extrait les seuils santé depuis les règles opérationnelles RG-1/2/3 (retourne les défauts si inactives/absentes). */
-export function healthThresholds(rules: { id: string; active: boolean; threshold: string }[]): {
+export function healthThresholds(
+  rules: { id: string; active: boolean; threshold: string; value?: number | null }[],
+): {
   sain: number;
   surveiller: number;
   risque: number;
@@ -694,6 +818,7 @@ export function healthThresholds(rules: { id: string; active: boolean; threshold
   const num = (id: string, fallback: number) => {
     const r = rules.find((x) => x.id === id);
     if (!r || !r.active) return fallback;
+    if (typeof r.value === "number" && Number.isFinite(r.value)) return r.value;
     const m = r.threshold.match(/(\d+)/);
     return m && m[1] ? parseInt(m[1], 10) : fallback;
   };
@@ -1184,7 +1309,6 @@ export const projects: Project[] = [
     endDate: "2024-09-05",
     manager: "Jean Dupont",
     qaLead: "Marie Martin",
-    progress: 78,
   },
   {
     id: "pr-sdk",
@@ -1197,7 +1321,6 @@ export const projects: Project[] = [
     endDate: "2024-10-15",
     manager: "Jean Dupont",
     qaLead: "Marie Martin",
-    progress: 12,
   },
   {
     id: "pr-mmoney",
@@ -1210,7 +1333,6 @@ export const projects: Project[] = [
     endDate: "2024-06-30",
     manager: "Sophie Lemaire",
     qaLead: "Pierre Durand",
-    progress: 100,
   },
   {
     id: "pr-crm-25",
@@ -1223,7 +1345,6 @@ export const projects: Project[] = [
     endDate: "2024-09-20",
     manager: "Sophie Lemaire",
     qaLead: "Pierre Durand",
-    progress: 45,
   },
   {
     id: "pr-crm-analytics",
@@ -1236,7 +1357,6 @@ export const projects: Project[] = [
     endDate: "2024-12-15",
     manager: "Sophie Lemaire",
     qaLead: "Pierre Durand",
-    progress: 5,
   },
   {
     id: "pr-portail-18",
@@ -1249,7 +1369,6 @@ export const projects: Project[] = [
     endDate: "2024-09-30",
     manager: "Ahmed Bakari",
     qaLead: "Marie Martin",
-    progress: 60,
   },
   {
     id: "pr-mobile-32",
@@ -1262,7 +1381,6 @@ export const projects: Project[] = [
     endDate: "2024-09-15",
     manager: "Marie Martin",
     qaLead: "Sophie Lemaire",
-    progress: 70,
   },
   {
     id: "pr-mobile-31",
@@ -1275,7 +1393,6 @@ export const projects: Project[] = [
     endDate: "2024-07-20",
     manager: "Marie Martin",
     qaLead: "Sophie Lemaire",
-    progress: 100,
   },
 ];
 
@@ -1550,65 +1667,79 @@ export const auditTrail: AuditEntry[] = [
 /*  7.12 Règles de référentiel -------------------------------------------  */
 
 export const referentialRules: ReferentialRule[] = [
-  { id: "RG-1", domain: "Santé", label: "Seuil sain", threshold: "≥ 85/100", active: true },
-  { id: "RG-2", domain: "Santé", label: "Seuil à surveiller", threshold: "≥ 75/100", active: true },
-  { id: "RG-3", domain: "Santé", label: "Seuil à risque", threshold: "≥ 60/100", active: true },
+  { id: "RG-1", domain: "Santé", label: "Seuil sain", threshold: "≥ 85/100", active: true, value: 85, unit: "score", comparator: "gte", mode: "warning" },
+  { id: "RG-2", domain: "Santé", label: "Seuil à surveiller", threshold: "≥ 75/100", active: true, value: 75, unit: "score", comparator: "gte", mode: "warning" },
+  { id: "RG-3", domain: "Santé", label: "Seuil à risque", threshold: "≥ 60/100", active: true, value: 60, unit: "score", comparator: "gte", mode: "warning" },
   {
     id: "RG-4",
     domain: "Campagne",
     label: "Taux d'exécution minimal avant clôture",
     threshold: "≥ 95 %",
-    active: true,
+    active: true, value: 95, unit: "percent", comparator: "gte", mode: "warning",
   },
   {
     id: "RG-5",
     domain: "Campagne",
     label: "Taux de succès minimal",
     threshold: "≥ 90 %",
-    active: true,
+    active: true, value: 90, unit: "percent", comparator: "gte", mode: "warning",
   },
   {
     id: "RG-6",
     domain: "Couverture",
     label: "Couverture fonctionnelle cible",
     threshold: "≥ 90 %",
-    active: true,
+    active: true, value: 90, unit: "percent", comparator: "gte", mode: "warning",
   },
   {
     id: "RG-7",
     domain: "Couverture",
     label: "Couverture fonctionnalité critique",
     threshold: "100 %, types obligatoires",
-    active: true,
+    active: true, value: 100, unit: "percent", comparator: "gte", mode: "blocking",
   },
   {
     id: "RG-8",
     domain: "Anomalies",
     label: "Délai de correction gravité haute",
     threshold: "≤ 7 jours",
-    active: true,
+    active: true, value: 7, unit: "days", comparator: "lte", mode: "warning",
   },
   {
     id: "RG-9",
     domain: "Go Live",
     label: "Anomalies hautes ouvertes tolérées",
     threshold: "0",
-    active: true,
+    active: true, value: 0, unit: "count", comparator: "lte", mode: "blocking",
   },
   {
     id: "RG-10",
     domain: "Go Live",
     label: "Complétude checklist minimale pour GO",
     threshold: "≥ 85 %",
-    active: false,
+    active: false, value: 85, unit: "percent", comparator: "gte", mode: "warning",
   },
 ];
 
 /*  7.13 Utilisateurs plateforme ----------------------------------------  */
 
 export const platformUsers: PlatformUser[] = [
-  { id: "u-1", name: "Jean Dupont", email: "jean.dupont@dhi.io", role: "approver", active: true, password: "demo" },
-  { id: "u-2", name: "Marie Martin", email: "marie.martin@dhi.io", role: "qa_lead", active: true, password: "demo" },
+  {
+    id: "u-1",
+    name: "Jean Dupont",
+    email: "jean.dupont@dhi.io",
+    role: "approver",
+    active: true,
+    password: "demo",
+  },
+  {
+    id: "u-2",
+    name: "Marie Martin",
+    email: "marie.martin@dhi.io",
+    role: "qa_lead",
+    active: true,
+    password: "demo",
+  },
   {
     id: "u-3",
     name: "Pierre Durand",
@@ -1649,11 +1780,46 @@ export const platformUsers: PlatformUser[] = [
     active: true,
     password: "demo",
   },
-  { id: "u-8", name: "Karim Ndiaye", email: "karim.ndiaye@dhi.io", role: "admin", active: true, password: "demo" },
-  { id: "u-9", name: "Lucas Bernard", email: "lucas.bernard@dhi.io", role: "developpeur", active: true, password: "demo" },
-  { id: "u-10", name: "Emma Girard", email: "emma.girard@dhi.io", role: "developpeur", active: true, password: "demo" },
-  { id: "u-11", name: "Hugo Petit", email: "hugo.petit@dhi.io", role: "developpeur", active: true, password: "demo" },
-  { id: "u-12", name: "Nadia Belkacem", email: "nadia.belkacem@dhi.io", role: "chef_testeur", active: true, password: "demo" },
+  {
+    id: "u-8",
+    name: "Karim Ndiaye",
+    email: "karim.ndiaye@dhi.io",
+    role: "admin",
+    active: true,
+    password: "demo",
+  },
+  {
+    id: "u-9",
+    name: "Lucas Bernard",
+    email: "lucas.bernard@dhi.io",
+    role: "developpeur",
+    active: true,
+    password: "demo",
+  },
+  {
+    id: "u-10",
+    name: "Emma Girard",
+    email: "emma.girard@dhi.io",
+    role: "developpeur",
+    active: true,
+    password: "demo",
+  },
+  {
+    id: "u-11",
+    name: "Hugo Petit",
+    email: "hugo.petit@dhi.io",
+    role: "developpeur",
+    active: true,
+    password: "demo",
+  },
+  {
+    id: "u-12",
+    name: "Nadia Belkacem",
+    email: "nadia.belkacem@dhi.io",
+    role: "chef_testeur",
+    active: true,
+    password: "demo",
+  },
 ];
 
 /*  7.14 Documents produits ------------------------------------------------  */
@@ -1665,7 +1831,8 @@ export const productDocuments: ProductDocument[] = [
     type: "cdc",
     name: "CDC Paiement Online v4.12",
     fileName: "CDC_Paiement_Online_v4.12.pdf",
-    content: "Cahier des charges complet pour la release 4.12 du module Paiement Online. Couvre les新的 méthodes de paiement mobile money, l'optimisation des transactions virement et les exigences PCI-DSS mises à jour.",
+    content:
+      "Cahier des charges complet pour la release 4.12 du module Paiement Online. Couvre les新的 méthodes de paiement mobile money, l'optimisation des transactions virement et les exigences PCI-DSS mises à jour.",
     uploadedBy: "Marie Martin",
     uploadedAt: "2024-07-15",
   },
@@ -1675,7 +1842,8 @@ export const productDocuments: ProductDocument[] = [
     type: "architecture",
     name: "Architecture technique Paiement",
     fileName: "Arch_Technique_Paiement.pdf",
-    content: "Diagramme d'architecture microservices : API Gateway → Service Paiement → Adaptateurs (Carte, MobileMoney, Virement). Base PostgreSQL avec réplication, cache Redis, file de messages RabbitMQ.",
+    content:
+      "Diagramme d'architecture microservices : API Gateway → Service Paiement → Adaptateurs (Carte, MobileMoney, Virement). Base PostgreSQL avec réplication, cache Redis, file de messages RabbitMQ.",
     uploadedBy: "Jean Dupont",
     uploadedAt: "2024-06-20",
   },
@@ -1685,7 +1853,8 @@ export const productDocuments: ProductDocument[] = [
     type: "cdc",
     name: "CDC CRM Clients v2.5",
     fileName: "CDC_CRM_Clients_v2.5.pdf",
-    content: "Spécifications fonctionnelles pour le refonte de l'interface de gestion du portefeuille client. Nouveau tableau de bord commercial, segmentation automatique et alertes de churn.",
+    content:
+      "Spécifications fonctionnelles pour le refonte de l'interface de gestion du portefeuille client. Nouveau tableau de bord commercial, segmentation automatique et alertes de churn.",
     uploadedBy: "Sophie Lemaire",
     uploadedAt: "2024-08-01",
   },
@@ -1695,7 +1864,8 @@ export const productDocuments: ProductDocument[] = [
     type: "notes_techniques",
     name: "Notes techniques Portail Agence",
     fileName: "Notes_Tech_Portail_Agence.md",
-    content: "Guide d'installation et de configuration du portail interne. Prérequis : Java 17, PostgreSQL 15, reverse proxy Nginx. Procédures de déploiement CI/CD via GitLab.",
+    content:
+      "Guide d'installation et de configuration du portail interne. Prérequis : Java 17, PostgreSQL 15, reverse proxy Nginx. Procédures de déploiement CI/CD via GitLab.",
     uploadedBy: "Ahmed Bakari",
     uploadedAt: "2024-05-10",
   },
@@ -1710,7 +1880,8 @@ export const projectDocuments: ProjectDocument[] = [
     type: "cdc_sprint",
     name: "CDC Sprint 3 — Paiement Mobile Money",
     fileName: "CDC_Sprint3_MobileMoney.pdf",
-    content: "User stories et critères d'acceptation pour l'intégration Orange Money et Moov Money. Estimation : 34 story points. Objectif : 100% des pays cibles couverts.",
+    content:
+      "User stories et critères d'acceptation pour l'intégration Orange Money et Moov Money. Estimation : 34 story points. Objectif : 100% des pays cibles couverts.",
     uploadedBy: "Ahmed Bakari",
     uploadedAt: "2024-08-10",
   },
@@ -1720,7 +1891,8 @@ export const projectDocuments: ProjectDocument[] = [
     type: "spec_features",
     name: "Spécifications features — Module Paiement",
     fileName: "Spec_Features_Paiement.pdf",
-    content: "Détail des 5 features du sprint : Initiation paiement, Confirmation OTP, historique transactions, remboursement, rapport reconciliation.",
+    content:
+      "Détail des 5 features du sprint : Initiation paiement, Confirmation OTP, historique transactions, remboursement, rapport reconciliation.",
     uploadedBy: "Marie Martin",
     uploadedAt: "2024-08-12",
   },
@@ -1730,7 +1902,8 @@ export const projectDocuments: ProjectDocument[] = [
     type: "cas_de_test",
     name: "Cas de test — Refonte CRM",
     fileName: "Cas_Test_Refonte_CRM.xlsx",
-    content: "Suite de 42 cas de test pour la refonte de l'interface CRM. Couverture : tableau de bord (12), segmentation (8), alertes churn (10), reporting (12).",
+    content:
+      "Suite de 42 cas de test pour la refonte de l'interface CRM. Couverture : tableau de bord (12), segmentation (8), alertes churn (10), reporting (12).",
     uploadedBy: "Pierre Durand",
     uploadedAt: "2024-08-05",
   },
@@ -1745,7 +1918,8 @@ export const campaignDocuments: CampaignDocument[] = [
     type: "scenario_test",
     name: "Scénario de bout en bout — Paiement Mobile",
     fileName: "Scenario_Paiement_Mobile.pdf",
-    content: "Parcours de test de bout en bout couvrant l'initiation du paiement, la confirmation OTP et la réconciliation des transactions.",
+    content:
+      "Parcours de test de bout en bout couvrant l'initiation du paiement, la confirmation OTP et la réconciliation des transactions.",
     uploadedBy: "Nadia Belkacem",
     uploadedAt: "2024-08-18",
   },
@@ -1755,7 +1929,8 @@ export const campaignDocuments: CampaignDocument[] = [
     type: "rapport_execution",
     name: "Rapport d'exécution — Campagne Exploratoire V1",
     fileName: "Rapport_Exec_Exploratoire_V1.xlsx",
-    content: "Bilan d'exécution : 120 cas exécutés, 108 passés, 8 bloqués, 4 en échec. Taux de couverture : 91 %.",
+    content:
+      "Bilan d'exécution : 120 cas exécutés, 108 passés, 8 bloqués, 4 en échec. Taux de couverture : 91 %.",
     uploadedBy: "Pierre Durand",
     uploadedAt: "2024-08-20",
   },
@@ -1770,7 +1945,8 @@ export const featureDocuments: FeatureDocument[] = [
     type: "specification",
     name: "Spécification — Authentification",
     fileName: "Spec_Authentification.pdf",
-    content: "Règles métier, maquettes et critères d'acceptation de la fonctionnalité Authentification.",
+    content:
+      "Règles métier, maquettes et critères d'acceptation de la fonctionnalité Authentification.",
     uploadedBy: "Marie Martin",
     uploadedAt: "2024-07-22",
   },
@@ -1780,7 +1956,8 @@ export const featureDocuments: FeatureDocument[] = [
     type: "plan_test",
     name: "Plan de test — Gestion des projets",
     fileName: "Plan_Test_Gestion_Projets.pdf",
-    content: "Stratégie, périmètre et cas de tests planifiés pour la fonctionnalité Gestion des projets.",
+    content:
+      "Stratégie, périmètre et cas de tests planifiés pour la fonctionnalité Gestion des projets.",
     uploadedBy: "Nadia Belkacem",
     uploadedAt: "2024-07-28",
   },

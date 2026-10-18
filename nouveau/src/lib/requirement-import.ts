@@ -1,5 +1,5 @@
 import type { Criticality, Feature, RequirementStatus } from "@/lib/dhi-data";
-import { CSV_SEP, parseCsvLine } from "@/lib/test-import";
+import { CSV_SEP, parseCsvRecords } from "@/lib/test-import";
 
 /**
  * Format d'import des exigences (séparateur `;`, encodage UTF-8).
@@ -164,11 +164,12 @@ function resolveFeature(value: string, features: Feature[]): string | null {
 }
 
 export function parseRequirementImport(text: string, features: Feature[]): RequirementImportResult {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return { rows: [], missingColumns: ["titre"], totalLines: 0 };
-  if (lines.length === 1) return { rows: [], missingColumns: ["titre"], totalLines: 0 };
+  // Lecture par enregistrements : une description Excel sur plusieurs lignes
+  // reste une seule exigence.
+  const records = parseCsvRecords(text);
+  if (records.length < 2) return { rows: [], missingColumns: ["titre"], totalLines: 0 };
 
-  const headerCells = parseCsvLine(lines[0] ?? "").map((h) => h.trim());
+  const headerCells = (records[0] ?? []).map((h) => h.trim());
   const columns = mapHeaders(headerCells);
   const missingColumns = Object.keys(HEADER_ALIASES).filter((k) => columns[k] === undefined);
 
@@ -178,8 +179,8 @@ export function parseRequirementImport(text: string, features: Feature[]): Requi
   };
 
   const rows: ParsedRequirementRow[] = [];
-  for (let ln = 1; ln < lines.length; ln++) {
-    const cells = parseCsvLine(lines[ln] ?? "");
+  for (let ln = 1; ln < records.length; ln++) {
+    const cells = records[ln] ?? [];
     const errors: string[] = [];
 
     const title = cell(cells, "titre");
@@ -240,7 +241,7 @@ export function parseRequirementImport(text: string, features: Feature[]): Requi
     });
   }
 
-  return { rows, missingColumns, totalLines: lines.length - 1 };
+  return { rows, missingColumns, totalLines: records.length - 1 };
 }
 
 function csvCell(value: string): string {

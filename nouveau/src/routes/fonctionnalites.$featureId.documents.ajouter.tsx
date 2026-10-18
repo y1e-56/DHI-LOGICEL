@@ -6,13 +6,7 @@ import { AppShell } from "@/components/dhi/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useStore, loadSnapshot } from "@/lib/dhi-store";
 import {
   features as seedFeatures,
@@ -92,7 +86,12 @@ function AddFeatureDocument() {
     }
     if (localStorage.getItem("token") && /^\d+$/.test(featureId) && file) {
       try {
-        await uploadEvidence("feature", featureId, file, JSON.stringify({ name: name.trim(), type: type.trim() }));
+        await uploadEvidence(
+          "feature",
+          featureId,
+          file,
+          JSON.stringify({ name: name.trim(), type: type.trim() }),
+        );
         toast.success(t("pages.documents.added"));
         void navigate({ to: backTo });
       } catch (error) {
@@ -145,21 +144,15 @@ function AddFeatureDocument() {
             <div className="grid gap-4">
               <div className="grid gap-2">
                 <Label className="text-sm font-medium">{t("pages.documents.type")}</Label>
-                <Select
+                <SearchableSelect
                   value={type}
                   onValueChange={(v) => setType(v as FeatureDocumentType)}
-                >
-                  <SelectTrigger className="h-11">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(FEATURE_DOC_TYPE_LABEL).map((label) => (
-                      <SelectItem key={label} value={label}>
-                        {FEATURE_DOC_TYPE_LABEL[label as FeatureDocumentType]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={Object.keys(FEATURE_DOC_TYPE_LABEL).map((label) => ({
+                    value: label,
+                    label: FEATURE_DOC_TYPE_LABEL[label as FeatureDocumentType],
+                  }))}
+                  className="h-11"
+                />
               </div>
 
               <div className="grid gap-2">

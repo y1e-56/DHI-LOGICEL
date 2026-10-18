@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/dhi/AppShell";
 import { HealthBadge, ScoreValue } from "@/components/dhi/indicators";
+import { ProductQuickView } from "@/components/dhi/ProductQuickView";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -17,13 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -35,6 +30,7 @@ import {
 import { type Product } from "@/lib/dhi-data";
 import { canCreateProduct } from "@/lib/role-protection";
 import { visibleProducts, getUser } from "@/lib/access";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { productScore, useStore, useHealthOf } from "@/lib/dhi-store";
 import { useI18n } from "@/lib/i18n";
 
@@ -72,6 +68,7 @@ function ProductsList() {
 
   const [toDelete, setToDelete] = useState<Product | null>(null);
   const [toArchive, setToArchive] = useState<Product | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
   const healthOf = useHealthOf();
 
   const rows = useMemo(() => {
@@ -141,28 +138,30 @@ function ProductsList() {
               className="w-64 pl-8"
             />
           </div>
-          <Select value={healthFilter} onValueChange={setHealthFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder={t("pages.products.health")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("pages.products.all_health")}</SelectItem>
-              <SelectItem value="sain">Sain</SelectItem>
-              <SelectItem value="surveiller">À surveiller</SelectItem>
-              <SelectItem value="risque">À risque</SelectItem>
-              <SelectItem value="critique">Critique</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder={t("pages.products.sort")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="score">{t("pages.products.score_desc")}</SelectItem>
-              <SelectItem value="name">{t("pages.products.name_asc")}</SelectItem>
-              <SelectItem value="lastUpdate">{t("pages.products.last_update")}</SelectItem>
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={healthFilter}
+            onValueChange={setHealthFilter}
+            options={[
+              { value: "all", label: t("pages.products.all_health") },
+              { value: "sain", label: "Sain" },
+              { value: "surveiller", label: "À surveiller" },
+              { value: "risque", label: "À risque" },
+              { value: "critique", label: "Critique" },
+            ]}
+            placeholder={t("pages.products.health")}
+            className="w-44"
+          />
+          <SearchableSelect
+            value={sort}
+            onValueChange={(v) => setSort(v as SortKey)}
+            options={[
+              { value: "score", label: t("pages.products.score_desc") },
+              { value: "name", label: t("pages.products.name_asc") },
+              { value: "lastUpdate", label: t("pages.products.last_update") },
+            ]}
+            placeholder={t("pages.products.sort")}
+            className="w-44"
+          />
           <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
             <Checkbox checked={showArchived} onCheckedChange={(v) => setShowArchived(v === true)} />
             {t("pages.products.show_archived")}
@@ -187,14 +186,26 @@ function ProductsList() {
           </TableHeader>
           <TableBody>
             {rows.map(({ p, score }) => (
-              <TableRow key={p.id}>
-                <TableCell
-                  className="cursor-pointer"
-                  onClick={() =>
-                    navigate({ to: "/produits/$productId", params: { productId: p.id } })
-                  }
-                >
-                  <p className="font-medium">{p.name}</p>
+              <TableRow
+                key={p.id}
+                className="cursor-pointer"
+                onClick={(e) => {
+                  if (isInteractiveClick(e)) return;
+                  void navigate({ to: "/produits/$productId", params: { productId: p.id } });
+                }}
+              >
+                <TableCell>
+                  <button
+                    type="button"
+                    className="text-left font-medium text-primary hover:underline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreview(p.id);
+                    }}
+                    title={t("pages.product_detail.quick_view_title")}
+                  >
+                    {p.name}
+                  </button>
                   <p className="max-w-md truncate text-xs text-muted-foreground">{p.description}</p>
                   {p.isArchived ? (
                     <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
@@ -266,6 +277,12 @@ function ProductsList() {
           </TableBody>
         </Table>
       </div>
+
+      <ProductQuickView
+        productId={preview ?? ""}
+        open={preview !== null}
+        onOpenChange={(o) => !o && setPreview(null)}
+      />
 
       <AlertDialog open={!!toArchive} onOpenChange={(o) => !o && setToArchive(null)}>
         <AlertDialogContent>

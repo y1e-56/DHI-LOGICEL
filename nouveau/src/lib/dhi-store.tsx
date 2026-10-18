@@ -27,7 +27,6 @@ import { toast } from "sonner";
 /* -------------------------------------------------------------------------- */
 
 import {
-  alerts as seedAlerts,
   auditTrail as seedAudit,
   campaigns as seedCampaigns,
   defects as seedDefects,
@@ -78,6 +77,8 @@ import {
   type WatchPoint,
   type AppRole,
 } from "./dhi-data";
+import { summarizeCoverage } from "./coverage";
+import { formatThreshold } from "./rules";
 import {
   ApiError,
   api,
@@ -161,6 +162,15 @@ import {
   type LoginResponse,
 } from "./api";
 
+/**
+ * Interrupteur du moteur d'alertes/notifications calculées localement par le
+ * store (règles sur tests, anomalies, campagnes…).
+ * `false` = aucune alerte ni notification locale n'est générée (utile en tests).
+ * Les notifications émises par le backend (chargement + temps réel) ne
+ * dépendent pas de cet interrupteur : elles restent toujours actives.
+ */
+export const DETECT_ALERTS = false;
+
 /* -------------------------------------------------------------------------- */
 /*  3. HELPERS : Persistance localStorage + Date                               */
 /* -------------------------------------------------------------------------- */
@@ -220,6 +230,10 @@ export function loadSnapshot(): PersistedSnapshot | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedSnapshot;
     if (!parsed || typeof parsed !== "object") return null;
+    if (!DETECT_ALERTS) {
+      parsed.alerts = [];
+      parsed.notifications = [];
+    }
     return parsed;
   } catch (e) {
     console.error("[DHI] loadSnapshot error:", e);
@@ -331,7 +345,7 @@ const defaultSnapshot = (): PersistedSnapshot => ({
   watchPoints: seedWatchPoints,
   goLiveDecisions: seedGoLive,
   goLiveChecklist: makeDefaultChecklist(),
-  alerts: seedAlerts,
+  alerts: [],
   notifications: [],
   audit: seedAudit,
   rules: seedRules,
@@ -371,7 +385,10 @@ interface Store {
   featureDocuments: FeatureDocument[];
 
   /*  2.2  Session / Auth -----------------------------------------------  */
-  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string; user?: SessionUser }>;
+  login: (
+    email: string,
+    password: string,
+  ) => Promise<{ ok: boolean; error?: string; user?: SessionUser }>;
   logout: () => void;
   setActiveRole: (role: AppRole) => void;
   backendStatus: "checking" | "online" | "offline";
@@ -405,13 +422,27 @@ interface Store {
   updateCampaign: (id: string, patch: Partial<Campaign>) => void;
   deleteCampaign: (id: string) => void;
   addTestCase: (
-      t: Omit<TestCase, "id" | "verdict" | "observed" | "comment" | "evidence"> & {
-        verdict?: Verdict;
-        observed?: string;
-        comment?: string;
-      },
-    ) => string;
+    t: Omit<TestCase, "id" | "verdict" | "observed" | "comment" | "evidence"> & {
+      verdict?: Verdict;
+      observed?: string;
+      comment?: string;
+    },
+  ) => string;
   updateTest: (id: string, patch: Partial<TestCase>) => void;
+  /**
+   * Enregistre un verdict depuis la liste des cas de test d'une campagne.
+   *
+   * Seule voie pour une resolution en un clic : elle attend l'identifiant de
+   * l'execution creee avant de rattacher les preuves, puis applique l'etat en
+   * base. `updateTest` ne peut pas servir ici — il ne rend pas la main et
+   * rattacherait les preuves a une execution qui n'existe pas encore.
+   * Renvoie l'id de l'execution, ou null si le cas n'existe pas en base.
+   */
+  recordTestVerdict: (
+    id: string,
+    verdict: Verdict,
+    details?: { observed?: string; comment?: string; files?: File[] },
+  ) => Promise<number | null>;
   deleteTest: (id: string) => void;
 
   /*  2.6  Mutations : Anomalies & Watch points -------------------------  */
@@ -604,14 +635,17 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       if (decisionPage.data.length) {
         setGoLiveDecisions(decisionPage.data.map(mapBackendGoLiveDecision));
       }
-      const overlayByRelease = new Map(checklistPages.map((entry) => [entry.releaseId, entry.items]));
+      const overlayByRelease = new Map(
+        checklistPages.map((entry) => [entry.releaseId, entry.items]),
+      );
       if (overlayByRelease.size) {
         setGoLiveChecklist((prev) => {
           const next = { ...prev };
           for (const [releaseId, backendItems] of overlayByRelease) {
             if (backendItems.length) {
               const checkedByKey = new Map(backendItems.map((i) => [i.id, i.checked]));
-              const base = next[releaseId] ?? GOLIVE_CHECKLIST_TEMPLATE.map((t) => ({ ...t, checked: false }));
+              const base =
+                next[releaseId] ?? GOLIVE_CHECKLIST_TEMPLATE.map((t) => ({ ...t, checked: false }));
               next[releaseId] = base.map((item) => ({
                 ...item,
                 checked: checkedByKey.get(item.id) ?? item.checked,
@@ -684,9 +718,9 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       );
       const executionPages = await Promise.all(
         backendCampaigns.map((campaign) =>
-          api<{ data: BackendTestExecution[] }>(`/test-executions?campaignId=${campaign.id}&limit=200`).then(
-            (page) => page.data,
-          ),
+          api<{ data: BackendTestExecution[] }>(
+            `/test-executions?campaignId=${campaign.id}&limit=200`,
+          ).then((page) => page.data),
         ),
       );
 
@@ -711,7 +745,9 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
             api<{ data: BackendWatchPoint[] }>(`/watch-points?projetId=${project.id}&limit=200`),
           ),
       );
-      const productByProject = new Map(backendProjects.map((project) => [project.id, project.product_id]));
+      const productByProject = new Map(
+        backendProjects.map((project) => [project.id, project.product_id]),
+      );
 
       // Releases : la table base les rattache au produit. On les charge par produit
       // puis on les attribue à un projet via les campagnes qui les référencent
@@ -738,17 +774,35 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       for (const page of releasePages) {
         const fallbackProjectId = (projectByProduct.get(page.productId) ?? [])[0];
         for (const release of page.items) {
-          const projectId =
-            projectIdForRelease.get(release.id) ?? fallbackProjectId;
+          const projectId = projectIdForRelease.get(release.id) ?? fallbackProjectId;
           if (projectId == null) continue;
           nextReleases.push(mapBackendRelease(release, String(projectId)));
         }
       }
 
-      setProducts(backendProducts.map(mapBackendProduct));
+      // Versions de chaque produit : numeros de ses releases, pour les
+      // formulaires (version initiale, version cible, version visee).
+      const versionsByProduct = new Map(
+        releasePages.map((page) => [page.productId, page.items.map((r) => r.version)]),
+      );
+      setProducts(
+        backendProducts.map((product) =>
+          mapBackendProduct(product, versionsByProduct.get(product.id) ?? []),
+        ),
+      );
       setProjects(backendProjects.map(mapBackendProject));
+      // Les fonctionnalités de la campagne (importées ou rattachées) vivent en base
+      // via features.campaign_id : on restaure featureIds à partir de cette source
+      // de vérité pour que la section « Fonctionnalités importées » survive au
+      // rechargement et reflète les imports CSV.
+      const featureIdsByCampaign = new Map<number, string[]>(
+        featurePages.map((page) => [page.campaignId, page.items.map((f) => String(f.id))]),
+      );
       setCampaigns(
-        backendCampaigns.map((campaign) => mapBackendCampaign(campaign, projectById.get(campaign.project_id))),
+        backendCampaigns.map((campaign) => ({
+          ...mapBackendCampaign(campaign, projectById.get(campaign.project_id)),
+          featureIds: featureIdsByCampaign.get(campaign.id),
+        })),
       );
       setReleases(nextReleases);
 
@@ -776,7 +830,11 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       for (const page of testPages) {
         for (const test of page.items) {
           const execs = execByTest.get(String(test.id));
-          nextTests.push(mapBackendTestCase(test, execs?.[execs.length - 1]));
+          // `/test-executions` trie par `execution_date DESC` : la premiere
+          // entree est l'execution la plus recente, celle affichee par la fiche
+          // d'execution (`executions[0]`). Prendre la derniere faisait diverger
+          // le store et la fiche, qui lisaient alors deux executions differentes.
+          nextTests.push(mapBackendTestCase(test, execs?.[0]));
         }
       }
       setTests(nextTests);
@@ -785,7 +843,9 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       setRequirements(requirementPage.data.map(mapBackendRequirement));
       setWatchPoints(
         watchProjectPages.flatMap((page) =>
-          page.data.map((point) => mapBackendWatchPoint(point, String(productByProject.get(point.project_id) ?? ""))),
+          page.data.map((point) =>
+            mapBackendWatchPoint(point, String(productByProject.get(point.project_id) ?? "")),
+          ),
         ),
       );
       if (backendUsers) setUsers(backendUsers);
@@ -800,13 +860,20 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       try {
         const rules = await listReferentialRules();
         setRules(
-          rules.map((rule: BackendReferentialRule) => ({
-            id: rule.id,
-            domain: rule.domain,
-            label: rule.label,
-            threshold: rule.threshold,
-            active: rule.active,
-          })),
+          rules.map((rule: BackendReferentialRule) => {
+            const value = rule.value === null || rule.value === undefined ? null : Number(rule.value);
+            return {
+              id: rule.id,
+              domain: rule.domain,
+              label: rule.label,
+              threshold: rule.threshold,
+              active: rule.active,
+              value: Number.isFinite(value) ? value : null,
+              unit: rule.unit ?? null,
+              comparator: rule.comparator ?? null,
+              mode: rule.mode ?? "warning",
+            };
+          }),
         );
       } catch (error) {
         console.warn("[DHI] Référentiels non chargés", error);
@@ -845,9 +912,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
     const todayStr = today();
     const next = products.map((prod) => {
       const prodFeatures = features.filter((f) => f.productId === prod.id);
-      const prodTests = tests.filter((t) =>
-        prodFeatures.some((f) => f.id === t.featureId),
-      );
+      const prodTests = tests.filter((t) => prodFeatures.some((f) => f.id === t.featureId));
       const prodDefects = defects.filter((d) => d.productId === prod.id);
 
       // --- 1. RESULTS : succès sur tests exécutés applicables ---
@@ -861,20 +926,10 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         ? Math.round((passedCnt / executed.length) * 100)
         : prod.breakdown.results;
 
-      // --- 2. COVERAGE : couverture feature × type de test ---
-      if (typeof window !== "undefined") {
-        // noop to keep import side-effects happy
-      }
-      let totalCells = 0;
-      let coveredCells = 0;
-      for (const f of prodFeatures) {
-        const coverageEntries = Object.entries(f.coverage ?? {});
-        totalCells += coverageEntries.length || 1;
-        coveredCells += coverageEntries.filter(([, v]) => v).length;
-      }
-      const coverage = totalCells
-        ? Math.round((coveredCells / totalCells) * 100)
-        : prod.breakdown.coverage;
+      // --- 2. COVERAGE : types de tests requis couverts par un cas reussi ---
+      // Meme calcul que la matrice de couverture : seuls les types requis par
+      // chaque fonctionnalite comptent, et la couverture vient des cas de test.
+      const coverage = summarizeCoverage(prodFeatures, prodTests).rate ?? prod.breakdown.coverage;
 
       // --- 3. CRITICAL : taux de succès des tests critiques ---
       const critTests = prodTests.filter((t) => t.criticality === "critique");
@@ -889,9 +944,15 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         : 100;
 
       // --- 4. INCIDENTS : pénalité par anomalie ouverte ---
-      const openHigh = prodDefects.filter((d) => d.status !== "fermee" && d.severity === "haute").length;
-      const openMed = prodDefects.filter((d) => d.status !== "fermee" && d.severity === "moyenne").length;
-      const openLow = prodDefects.filter((d) => d.status !== "fermee" && d.severity === "basse").length;
+      const openHigh = prodDefects.filter(
+        (d) => d.status !== "fermee" && d.severity === "haute",
+      ).length;
+      const openMed = prodDefects.filter(
+        (d) => d.status !== "fermee" && d.severity === "moyenne",
+      ).length;
+      const openLow = prodDefects.filter(
+        (d) => d.status !== "fermee" && d.severity === "basse",
+      ).length;
       const penalty = openHigh * 15 + openMed * 6 + openLow * 2;
       const incidents = Math.max(0, 100 - penalty);
 
@@ -952,7 +1013,8 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
           breakdown.testability * SCORE_WEIGHTS.testability +
           breakdown.qualityControl * SCORE_WEIGHTS.qualityControl,
       );
-      return { ...prod, breakdown, score, lastUpdate: todayStr };    });
+      return { ...prod, breakdown, score, lastUpdate: todayStr };
+    });
 
     const hasChanges = next.some((p, i) => {
       const old = products[i];
@@ -960,18 +1022,26 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       return (
         p.score !== old.score ||
         Object.keys(p.breakdown).some(
-          (k) => p.breakdown[k as keyof ScoreBreakdown] !== old.breakdown[k as keyof ScoreBreakdown],
+          (k) =>
+            p.breakdown[k as keyof ScoreBreakdown] !== old.breakdown[k as keyof ScoreBreakdown],
         )
       );
     });
     if (hasChanges) setProducts(next);
-  }, [tests, defects, features, campaigns]);
+  }, [tests, defects, features, campaigns, products]);
 
   /*  4.2c  Effet : Moteur d'alertes dynamiques ---------------------------  */
 
   const alertFingerprints = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const fires: { type: AlertType; severity: Severity | "info"; title: string; message: string; entityId: string }[] = [];
+    if (!DETECT_ALERTS) return;
+    const fires: {
+      type: AlertType;
+      severity: Severity | "info";
+      title: string;
+      message: string;
+      entityId: string;
+    }[] = [];
     const fp = (k: string, id: string) => `${k}:${id}`;
 
     // Règle 1 : anomalie haute gravité créée et ouverte
@@ -1084,9 +1154,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       setAlerts((prev) => {
         const next = [...prev];
         for (const f of fires) {
-          const dup = next.some(
-            (a) => a.entityId === f.entityId && a.title === f.title,
-          );
+          const dup = next.some((a) => a.entityId === f.entityId && a.title === f.title);
           if (dup) continue;
           next.unshift({
             id: `AL-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1108,6 +1176,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
 
   const notifFingerprints = useRef<Set<string>>(new Set());
   useEffect(() => {
+    if (!DETECT_ALERTS) return;
     if (!users.length) return;
     const userIdOf = (name?: string): string | null => {
       if (!name) return null;
@@ -1254,10 +1323,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         );
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tests, defects, campaigns, products, goLiveDecisions, users]);
-
-
 
   const value = useMemo<Store>(() => {
     const pushAudit = (actor: string, action: string, entity: string, detail: string) =>
@@ -1350,7 +1416,11 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
           },
         ]);
         attemptBackend("Création produit", () =>
-          createProduct({ name: p.name, description: p.description }),
+          createProduct({
+            name: p.name,
+            description: p.description,
+            version: p.versions[0] ?? "1.0",
+          }),
         );
         return id;
       },
@@ -1415,6 +1485,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
             name: p.name,
             description: p.objective,
             product_id: productBackend ?? null,
+            target_version: p.targetVersion || "1.0",
           }),
         );
         return id;
@@ -1480,6 +1551,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
               name: f.name,
               description: f.description,
               priority: toBackendPriority(f.criticality),
+              coverage: f.coverage,
             }),
           );
         } else if (!f.campaignId) {
@@ -1499,6 +1571,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
               description: patch.description,
               priority: toBackendPriority(patch.criticality),
               module: undefined,
+              coverage: patch.coverage,
             }),
           );
         }
@@ -1508,7 +1581,8 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         setTests((prev) => prev.filter((t) => t.featureId !== id));
         setDefects((prev) => prev.filter((d) => d.featureId !== id));
         const idBackend = backendIdOf(id);
-        if (idBackend) attemptBackend("Suppression fonctionnalité", () => deleteFeatureById(idBackend));
+        if (idBackend)
+          attemptBackend("Suppression fonctionnalité", () => deleteFeatureById(idBackend));
       },
 
       /* Releases -----------------------------------------------------  */
@@ -1546,9 +1620,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         }
       },
       setReleaseStatus: (id, status) => {
-        setReleases((prev) =>
-          prev.map((r) => (r.id === id ? { ...r, status } : r)),
-        );
+        setReleases((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
         const idBackend = backendIdOf(id);
         const release = releases.find((r) => r.id === id);
         const project = projects.find((p) => p.id === release?.projectId);
@@ -1576,6 +1648,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
             createCampaign({
               project_id: projectBackend,
               name: c.name,
+              version: c.version || "1.0",
               status: toBackendCampaignStatus(c.status),
               start_date: c.startDate,
               end_date: c.endDate,
@@ -1645,7 +1718,9 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         ]);
         const campaignBackend = backendIdOf(t.campaignId);
         const featureBackend = backendIdOf(t.featureId);
-        if (campaignBackend && featureBackend) {
+        // Un cas de test peut exister sans fonctionnalité : la campagne suffit
+        // (feature_id est null en base). Sans campagne non plus, on reste local.
+        if (campaignBackend) {
           attemptBackend("Création cas de test", () =>
             createTestCase({
               campaign_id: campaignBackend,
@@ -1657,6 +1732,16 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
               priority: toBackendPriority(t.criticality),
               type: t.type,
               assigned_to: t.assignedTo ?? null,
+            }).then((created) => {
+              // Re-mappe l'id local vers l'id backend dès la réponse : sans
+              // cela, le verdict posté ensuite resterait un cas local (id
+              // "T-..." étranger au backend) et l'exécution ne serait jamais
+              // enregistrée.
+              if (created && typeof created.id === "number") {
+                setTests((prev) =>
+                  prev.map((test) => (test.id === id ? { ...test, id: String(created.id) } : test)),
+                );
+              }
             }),
           );
         }
@@ -1667,60 +1752,148 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         setTests((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
         const test = tests.find((t) => t.id === id);
         if (patch.verdict && test) {
-          const testBackend = backendIdOf(test.id);
-          const campaignBackend = backendIdOf(test.campaignId);
-          if (testBackend && campaignBackend) {
-            const payload = {
-              result: toBackendVerdict(patch.verdict),
-              notes: patch.comment,
-              actual_behavior: patch.observed,
-            };
-            const execBackend = backendIdOf(test.executionId);
-            if (execBackend) {
-              attemptBackend("Verdict enregistré", () => updateExecutionById(execBackend, payload));
-            } else {
-              attemptBackend("Verdict enregistré", () =>
-                createExecution({
-                  test_case_id: testBackend,
-                  campaign_id: campaignBackend,
-                  result: payload.result,
-                  notes: payload.notes,
-                  actual_behavior: payload.actual_behavior,
-                }).then((exec) =>
-                  setTests((prev) =>
-                    prev.map((t) =>
-                      t.id === id ? { ...t, executionId: String(exec.id) } : t,
-                    ),
-                  ),
-                ),
-              );
-            }
-          }
+          // Pas d'ecriture backend ici : elle est centralisee chez les appelants
+          // qui maitrisent l'execution cible. La fiche d'execution persiste via
+          // `persistExecution` (execution courante + preuves), la resolution en
+          // un clic via `recordTestVerdict`. Persister aussi ici creait une
+          // seconde execution et pouvait ecrire sur une autre ligne que celle
+          // affichee : le re-test du chef de test n'atteignait alors plus la
+          // fiche lue par le testeur.
           pushAudit(asActor(patch.tester ?? "Système"), "Verdict enregistré", id, patch.verdict);
         } else if (test) {
           const testBackend = backendIdOf(test.id);
           if (testBackend) {
             const patchData = {
               ...(patch.name !== undefined && { name: patch.name }),
-              ...(patch.preconditions !== undefined && { description: patch.preconditions.join(", ") }),
+              ...(patch.preconditions !== undefined && {
+                description: patch.preconditions.join(", "),
+              }),
               ...(patch.expected !== undefined && { expected_result: patch.expected.join(" · ") }),
               ...(patch.steps !== undefined && { steps: patch.steps }),
-              ...(patch.criticality !== undefined && { priority: toBackendPriority(patch.criticality) }),
+              ...(patch.criticality !== undefined && {
+                priority: toBackendPriority(patch.criticality),
+              }),
               ...(patch.type !== undefined && { type: patch.type }),
               // L'affectation est desormais persistee. `null` retire le testeur,
               // l'absence de la cle laisse l'affectation existante intacte.
               ...(patch.assignedTo !== undefined && { assigned_to: patch.assignedTo }),
             };
             if (Object.keys(patchData).length > 0) {
-              attemptBackend("Mise à jour cas de test", () => updateTestCaseById(testBackend, patchData));
+              attemptBackend("Mise à jour cas de test", () =>
+                updateTestCaseById(testBackend, patchData),
+              );
             }
           }
         }
       },
+      recordTestVerdict: async (id, verdict, details) => {
+        const test = tests.find((t) => t.id === id);
+        if (!test) return null;
+        const testBackend = backendIdOf(test.id);
+        const campaignBackend = backendIdOf(test.campaignId);
+        const actor = currentUser?.name ?? "Système";
+        const executedAt = new Date().toLocaleString("fr-FR", {
+          dateStyle: "short",
+          timeStyle: "short",
+        });
+        const payload = {
+          result: toBackendVerdict(verdict),
+          notes: details?.comment,
+          actual_behavior: details?.observed,
+        };
+
+        // Mode local : pas d'id numerique, on applique le verdict tel quel.
+        if (!testBackend || !campaignBackend) {
+          setTests((prev) =>
+            prev.map((t) =>
+              t.id === id
+                ? {
+                    ...t,
+                    verdict,
+                    observed: details?.observed ?? t.observed,
+                    comment: details?.comment ?? t.comment,
+                    tester: actor,
+                    executedAt,
+                  }
+                : t,
+            ),
+          );
+          pushAudit(asActor(actor), "Verdict enregistré", id, verdict);
+          return null;
+        }
+
+        // L'echec doit remonter a l'appelant : sans retour arriere, le cas
+        // afficherait un verdict que la base n'a jamais enregistre.
+        const existing = backendIdOf(test.executionId);
+        const execution = existing
+          ? await updateExecutionById(existing, payload)
+          : await createExecution({
+              test_case_id: testBackend,
+              campaign_id: campaignBackend,
+              ...payload,
+            });
+
+        // Les preuves se rattachent a l'execution : sans cet id de la ligne
+        // precedente, les fichiers seraient orphelins en base.
+        const files = details?.files ?? [];
+        let evidence: TestCase["evidence"] = [];
+        if (files.length) {
+          const uploaded = await Promise.allSettled(
+            files.map(async (file) => ({
+              file,
+              saved: await uploadEvidence(
+                "test_execution",
+                String(execution.id),
+                file,
+                JSON.stringify({ name: file.name, test_case_id: testBackend }),
+              ),
+            })),
+          );
+          evidence = uploaded.flatMap((result) =>
+            result.status === "fulfilled"
+              ? [
+                  {
+                    id: String(result.value.saved.id),
+                    name: result.value.file.name,
+                    size:
+                      result.value.file.size > 1_000_000
+                        ? `${(result.value.file.size / 1_000_000).toFixed(1)} MB`
+                        : `${Math.max(1, Math.round(result.value.file.size / 1000))} KB`,
+                    kind: (result.value.file.type.startsWith("image/")
+                      ? "image"
+                      : result.value.file.type.startsWith("video/")
+                        ? "video"
+                        : "log") as TestCase["evidence"][number]["kind"],
+                  },
+                ]
+              : [],
+          );
+        }
+
+        setTests((prev) =>
+          prev.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  verdict,
+                  observed: details?.observed ?? t.observed,
+                  comment: details?.comment ?? t.comment,
+                  executionId: String(execution.id),
+                  ...(evidence.length ? { evidence: [...t.evidence, ...evidence] } : {}),
+                  tester: actor,
+                  executedAt,
+                }
+              : t,
+          ),
+        );
+        pushAudit(asActor(actor), "Verdict enregistré", id, verdict);
+        return execution.id;
+      },
       deleteTest: (id) => {
         setTests((prev) => prev.filter((t) => t.id !== id));
         const idBackend = backendIdOf(id);
-        if (idBackend) attemptBackend("Suppression cas de test", () => deleteTestCaseById(idBackend));
+        if (idBackend)
+          attemptBackend("Suppression cas de test", () => deleteTestCaseById(idBackend));
         pushAudit(asActor("Système"), "Cas de test supprimé", id, "—");
       },
 
@@ -1802,12 +1975,17 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         setWatchPoints((prev) => prev.map((w) => (w.id === id ? { ...w, ...patch } : w)));
         const idBackend = backendIdOf(id);
         if (idBackend) {
+          // Seuls les champs modifies partent au serveur : convertir un niveau ou
+          // un statut absent donnait « medium » / « open », et changer le statut
+          // d'un point critique le faisait retomber en vigilance.
           attemptBackend("Mise à jour point à surveiller", () =>
             updateWatchPointById(idBackend, {
-              title: patch.title,
-              description: patch.description,
-              criticality: toBackendWatchCriticality(patch.level),
-              status: toBackendWatchStatus(patch.status),
+              ...(patch.title !== undefined && { title: patch.title }),
+              ...(patch.description !== undefined && { description: patch.description }),
+              ...(patch.level !== undefined && {
+                criticality: toBackendWatchCriticality(patch.level),
+              }),
+              ...(patch.status !== undefined && { status: toBackendWatchStatus(patch.status) }),
             }),
           );
         }
@@ -1821,7 +1999,8 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       deleteWatchPoint: (id) => {
         setWatchPoints((prev) => prev.filter((w) => w.id !== id));
         const idBackend = backendIdOf(id);
-        if (idBackend) attemptBackend("Suppression point à surveiller", () => deleteWatchPointById(idBackend));
+        if (idBackend)
+          attemptBackend("Suppression point à surveiller", () => deleteWatchPointById(idBackend));
         pushAudit(asActor("Système"), "Point à surveiller supprimé", id, "—");
       },
 
@@ -1856,9 +2035,11 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
               description: patch.description,
               status: patch.status ? toBackendRequirementStatus(patch.status) : undefined,
               priority: patch.priority ? toBackendRequirementPriority(patch.priority) : undefined,
-              product_id: patch.productId ? backendIdOf(patch.productId) ?? null : undefined,
+              product_id: patch.productId ? (backendIdOf(patch.productId) ?? null) : undefined,
               feature_ids: patch.featureIds
-                ? patch.featureIds.map((fid) => backendIdOf(fid)).filter((fid): fid is number => fid != null)
+                ? patch.featureIds
+                    .map((fid) => backendIdOf(fid))
+                    .filter((fid): fid is number => fid != null)
                 : undefined,
             }),
           );
@@ -1867,7 +2048,8 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       deleteRequirement: (id) => {
         setRequirements((prev) => prev.filter((r) => r.id !== id));
         const idBackend = backendIdOf(id);
-        if (idBackend) attemptBackend("Suppression exigence", () => deleteRequirementById(idBackend));
+        if (idBackend)
+          attemptBackend("Suppression exigence", () => deleteRequirementById(idBackend));
         pushAudit(asActor("Système"), "Exigence supprimée", id, "—");
       },
       toggleChecklistItem: (releaseId, itemId) => {
@@ -1971,9 +2153,7 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
           ...prev,
         ]),
       markNotificationRead: (id) => {
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-        );
+        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
         if (/^\d+$/.test(id)) {
           markNotificationRead(Number(id)).catch(() => {});
         }
@@ -2007,13 +2187,10 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
       updateUserRole: async (id, role) => {
         const isBackendUser = /^\d+$/.test(id);
         if (isBackendUser) {
-          await api<{ user: { id: number | string } }>(
-            `/auth/users/${id}/role`,
-            {
-              method: "PATCH",
-              body: JSON.stringify({ roles: [ROLE_TO_BACKEND[role]] }),
-            },
-          );
+          await api<{ user: { id: number | string } }>(`/auth/users/${id}/role`, {
+            method: "PATCH",
+            body: JSON.stringify({ roles: [ROLE_TO_BACKEND[role]] }),
+          });
         }
         setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role, roles: [role] } : u)));
         pushAudit(asActor("Administrateur"), "Rôle modifié", id, role);
@@ -2023,10 +2200,10 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         if (!target) return;
         const isBackendUser = /^\d+$/.test(id);
         if (isBackendUser) {
-          await api<{ id: number | string }>(
-            target.active
-              ? `/auth/users/${id}/soft-delete`
-              : `/auth/users/${id}/restore`,
+          // Desactivation reversible (colonne is_active) : le compte reste dans
+          // la liste. Le soft-delete est reserve a la suppression.
+          await api<{ message: string }>(
+            target.active ? `/auth/users/${id}/deactivate` : `/auth/users/${id}/activate`,
             { method: "PATCH" },
           );
         }
@@ -2054,22 +2231,27 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         const [first_name, ...rest] = u.name.trim().split(/\s+/);
         const frontRoles = u.roles && u.roles.length ? u.roles : [u.role];
         const backendRoles = [...new Set(frontRoles.map((r) => ROLE_TO_BACKEND[r]))];
-        const created = await api<{ user: { id: number | string }; created?: boolean }>("/auth/register", {
-          method: "POST",
-          body: JSON.stringify({
-            email: u.email,
-            password: u.password ?? "",
-            first_name: first_name ?? "",
-            last_name: rest.join(" "),
-            role: backendRoles[0],
-            roles: backendRoles,
-          }),
-        });
+        const created = await api<{ user: { id: number | string }; created?: boolean }>(
+          "/auth/register",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              email: u.email,
+              password: u.password ?? "",
+              first_name: first_name ?? "",
+              last_name: rest.join(" "),
+              role: backendRoles[0],
+              roles: backendRoles,
+            }),
+          },
+        );
         const id = String(created.user.id);
         const mergedRoles = frontRoles;
         if (created.created === false) {
           setUsers((prev) =>
-            prev.map((p) => (p.id === id ? { ...p, name: u.name, roles: mergedRoles, role: u.role } : p)),
+            prev.map((p) =>
+              p.id === id ? { ...p, name: u.name, roles: mergedRoles, role: u.role } : p,
+            ),
           );
           pushAudit(asActor("Administrateur"), "Rôles rattachés", id, u.name);
         } else {
@@ -2079,23 +2261,40 @@ export function DhiStoreProvider({ children }: { children: ReactNode }) {
         return id;
       },
       updateRule: (id, patch) => {
-        setRules((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+        // Le libelle du seuil suit la valeur structuree, comme cote serveur.
+        setRules((prev) =>
+          prev.map((r) => {
+            if (r.id !== id) return r;
+            const next = { ...r, ...patch };
+            const label = formatThreshold(next);
+            return label ? { ...next, threshold: label } : next;
+          }),
+        );
         if (localStorage.getItem("token")) {
           const rulePatch = {
             ...(patch.domain !== undefined && { domain: patch.domain }),
             ...(patch.label !== undefined && { label: patch.label }),
             ...(patch.threshold !== undefined && { threshold: patch.threshold }),
             ...(patch.active !== undefined && { active: patch.active }),
+            ...(patch.value !== undefined && { value: patch.value }),
+            ...(patch.mode !== undefined && { mode: patch.mode }),
           };
-          void updateReferentialRule(id, rulePatch)
-            .catch((error) => console.warn("[DHI] Règle non synchronisée", error));
+          // Un refus du serveur (valeur hors bornes…) doit se voir : sinon la
+          // page affiche un seuil qui n'est pas celui applique.
+          void updateReferentialRule(id, rulePatch).catch((error) =>
+            toast.error("Règle non enregistrée", {
+              description: error instanceof Error ? error.message : String(error),
+            }),
+          );
         }
       },
       deleteRule: (id) => {
         setRules((prev) => prev.filter((r) => r.id !== id));
         pushAudit(asActor("Système"), "Règle supprimée", id, "—");
         if (localStorage.getItem("token")) {
-          void deleteReferentialRule(id).catch((error) => console.warn("[DHI] Suppression règle non synchronisée", error));
+          void deleteReferentialRule(id).catch((error) =>
+            console.warn("[DHI] Suppression règle non synchronisée", error),
+          );
         }
       },
 

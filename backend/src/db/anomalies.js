@@ -184,3 +184,21 @@ export async function syncCorrectionDueDateForFeature(featureId, dueDate, client
   );
   return result.rows.length;
 }
+
+/**
+ * Nombre d'anomalies encore ouvertes (ni validees) d'une fonctionnalite ou
+ * d'une campagne. Une anomalie rejetee est rouverte : elle compte comme ouverte.
+ */
+export async function countOpen({ featureId = null, campaignId = null }, client = null) {
+  const c = client || pool;
+  const conditions = [`status <> 'validated'`];
+  const params = [];
+  if (featureId) { params.push(featureId); conditions.push(`feature_id = $${params.length}`); }
+  if (campaignId) { params.push(campaignId); conditions.push(`campaign_id = $${params.length}`); }
+  if (params.length === 0) return 0;
+  const result = await c.query(
+    `SELECT COUNT(*)::int AS count FROM anomalies WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  return result.rows[0]?.count ?? 0;
+}

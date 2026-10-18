@@ -1,6 +1,6 @@
 import pool from '../config/database.js';
 
-const COLUMNS = 'id, domain, label, threshold, active, created_at, updated_at';
+const COLUMNS = 'id, domain, label, threshold, active, value, unit, comparator, mode, created_at, updated_at';
 
 export async function listRules(client = null) {
   const c = client || pool;
@@ -23,7 +23,7 @@ export async function updateRule(id, patch, client = null) {
   const c = client || pool;
   const fields = [];
   const params = [];
-  const columns = ['domain', 'label', 'threshold', 'active'];
+  const columns = ['domain', 'label', 'threshold', 'active', 'value', 'unit', 'comparator', 'mode'];
   for (const col of columns) {
     if (patch[col] !== undefined) {
       params.push(patch[col]);

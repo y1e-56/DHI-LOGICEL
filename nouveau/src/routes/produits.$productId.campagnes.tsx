@@ -1,4 +1,4 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import { Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/dhi/AppShell";
@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { campaignStats, loadSnapshot, useStore } from "@/lib/dhi-store";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { products as seedProducts } from "@/lib/dhi-data";
 import { productTabs } from "@/lib/dhi-nav";
 import { canCreateCampaign } from "@/lib/role-protection";
@@ -27,9 +28,7 @@ export const Route = createFileRoute("/produits/$productId/campagnes")({
     return { name: p?.name ?? "Produit" };
   },
   head: ({ loaderData }) => ({
-    meta: [
-      { title: `Campagnes · ${loaderData?.name ?? "Produit"} — DHI Quality Platform` },
-    ],
+    meta: [{ title: `Campagnes · ${loaderData?.name ?? "Produit"} — DHI Quality Platform` }],
   }),
   component: ProductCampaigns,
 });
@@ -37,6 +36,7 @@ export const Route = createFileRoute("/produits/$productId/campagnes")({
 function ProductCampaigns() {
   const { productId } = Route.useParams();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { products, projects, campaigns, tests } = useStore();
   const product = products.find((p) => p.id === productId);
   const [search, setSearch] = useState("");
@@ -57,11 +57,16 @@ function ProductCampaigns() {
     <AppShell
       title={product?.name ?? t("nav.product_campaigns")}
       subtitle={t("nav.product_campaigns")}
-      breadcrumb={[t("nav.qualite"), t("nav.produits"), product?.name ?? "", t("nav.product_campaigns")]}
+      breadcrumb={[
+        t("nav.qualite"),
+        t("nav.produits"),
+        product?.name ?? "",
+        t("nav.product_campaigns"),
+      ]}
       tabs={productTabs(productId)}
       actions={
         canCreateCampaign() ? (
-          <Link to="/campagnes/ajouter">
+          <Link to="/campagnes/ajouter" search={{ productId }}>
             <Button size="sm">
               <Plus className="size-4" /> {t("pages.campaigns.new_campaign")}
             </Button>
@@ -97,7 +102,14 @@ function ProductCampaigns() {
               const st = campaignStats(tests, c.id);
               const pr = projects.find((p) => p.id === c.projectId);
               return (
-                <TableRow key={c.id}>
+                <TableRow
+                  key={c.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({ to: "/campagnes/$campaignId", params: { campaignId: c.id } });
+                  }}
+                >
                   <TableCell>
                     <Link
                       to="/campagnes/$campaignId"

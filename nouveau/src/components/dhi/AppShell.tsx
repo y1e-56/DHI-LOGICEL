@@ -3,6 +3,7 @@
    ========================================================= */
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  ArrowLeft,
   LayoutDashboard,
   Boxes,
   ListChecks,
@@ -46,7 +47,7 @@ import { type AppShellTab } from "@/lib/dhi-nav";
 import { ROLE_LABEL, ROLE_PAGES, NOTIFICATION_TYPE_LABEL } from "@/lib/dhi-data";
 import { useStore } from "@/lib/dhi-store";
 import { hasAccessToPage, getDefaultDashboardForRole } from "@/lib/role-protection";
-import { useI18n, type TranslationKey } from "@/lib/i18n";
+import { BREADCRUMB_SEP, useI18n, type TranslationKey } from "@/lib/i18n";
 import { useRealtimeNotifications } from "@/lib/use-realtime-notifications";
 import { cn } from "@/lib/utils";
 
@@ -253,8 +254,7 @@ function Brand() {
 function NotificationBell() {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { notifications, currentUser, markNotificationRead, markAllNotificationsRead } =
-    useStore();
+  const { notifications, currentUser, markNotificationRead, markAllNotificationsRead } = useStore();
 
   if (!currentUser) return null;
 
@@ -480,15 +480,21 @@ export function AppShell({
   breadcrumb,
   tabs,
   actions,
+  backTo,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   subtitle?: string;
   /** Fil d'Ariane affiché au-dessus du titre. */
   breadcrumb?: string | string[];
   /** Priorité 2 (horizontal) : sous-navigation de la section courante. */
   tabs?: AppShellTab[];
   actions?: ReactNode;
+  /**
+   * Cible de retour d'une fiche : le titre devient alors un bouton de retour
+   * (flèche + libellé cliquables) plutôt qu'un simple texte.
+   */
+  backTo?: { to: string; params?: Record<string, string> };
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -542,16 +548,31 @@ export function AppShell({
             <div className="min-w-0 flex-1">
               {breadcrumb ? (
                 <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  {(Array.isArray(breadcrumb) ? breadcrumb : [breadcrumb]).map((crumb, i) => (
+                  {(Array.isArray(breadcrumb) ? breadcrumb : breadcrumb.split(BREADCRUMB_SEP)).map(
+                    (crumb, i) => (
                     <span key={crumb} className="flex items-center gap-1 truncate">
                       {i > 0 ? <ChevronRight className="size-3 opacity-60" /> : null}
                       {crumb}
                     </span>
-                  ))}
+                    ),
+                  )}
                 </div>
               ) : null}
               <div className="flex items-baseline gap-2">
-                <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
+                {backTo ? (
+                  <Link
+                    to={backTo.to}
+                    {...(backTo.params ? { params: backTo.params as never } : {})}
+                    title={t("actions.retour")}
+                    aria-label={t("actions.retour")}
+                    className="group -ml-1.5 flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[15px] font-semibold tracking-tight transition-colors hover:bg-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <ArrowLeft className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+                    <span className="truncate">{title}</span>
+                  </Link>
+                ) : (
+                  <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
+                )}
                 {subtitle ? (
                   <p className="hidden truncate text-xs text-muted-foreground md:block">
                     {subtitle}

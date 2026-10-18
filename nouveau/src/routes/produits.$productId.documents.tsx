@@ -1,9 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { createFileRoute, Link, Outlet, useMatches } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 import { FileText, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/dhi/AppShell";
 import { EvidenceDownloadButton } from "@/components/dhi/EvidenceDownloadButton";
+import {
+  EntityDocumentDialog,
+  type EntityDocumentInfo,
+} from "@/components/dhi/EntityDocumentDialog";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -19,6 +23,7 @@ import { productTabs } from "@/lib/dhi-nav";
 import { useI18n } from "@/lib/i18n";
 import { canDeleteProductDoc, canUploadAnyProductDoc } from "@/lib/document-permissions";
 import { getUser, productVisibleTo } from "@/lib/access";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { ProductAccessDenied } from "@/components/dhi/AccessDenied";
 import { api, mapBackendEvidence, type BackendEvidence } from "@/lib/api";
 
@@ -40,13 +45,39 @@ function ProductDocuments() {
   const { t } = useI18n();
   const { products, productDocuments, deleteProductDocument, replaceProductDocuments } = useStore();
   const product = products.find((p) => p.id === productId);
+  const [detail, setDetail] = useState<EntityDocumentInfo | null>(null);
+
+  // Les actions du store sont recrées a chaque changement d'etat : les lire
+  // via un ref evite que le chargement se redeclenche en boucle.
+  const replaceRef = useRef(replaceProductDocuments);
+  useEffect(() => {
+    replaceRef.current = replaceProductDocuments;
+  });
+
+  // « Ajouter un document » est une route enfant de cette page : elle s'affiche
+  // dans l'Outlet ci-dessous. Revenir sur la liste relance le chargement, pour
+  // afficher le document qui vient d'etre envoye.
+  const matches = useMatches();
+  const onChildRoute = matches[matches.length - 1]?.routeId !== Route.id;
 
   useEffect(() => {
+    if (onChildRoute) return;
     if (!localStorage.getItem("token") || !/^\d+$/.test(productId)) return;
+    let cancelled = false;
     void api<BackendEvidence[]>(`/evidence/by-entity/product/${productId}`)
-      .then((items) => replaceProductDocuments(items.map((item) => ({ ...mapBackendEvidence(item), productId }))))
-      .catch((error) => console.error("[Documents] Impossible de charger les documents produit", error));
-  }, [productId, replaceProductDocuments]);
+      .then((items) => {
+        if (cancelled) return;
+        replaceRef.current(items.map((item) => ({ ...mapBackendEvidence(item), productId })));
+      })
+      .catch((error) =>
+        console.error("[Documents] Impossible de charger les documents produit", error),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [productId, onChildRoute]);
+
+  if (onChildRoute) return <Outlet />;
 
   if (product && !productVisibleTo(product, getUser())) {
     return <ProductAccessDenied subject={product.name} />;
@@ -84,12 +115,29 @@ function ProductDocuments() {
               <TableHead>{t("pages.documents.file")}</TableHead>
               <TableHead>{t("pages.documents.uploaded_by")}</TableHead>
               <TableHead>{t("pages.documents.uploaded_at")}</TableHead>
-                <TableHead className="text-right">{t("pages.documents.actions")}</TableHead>
+              <TableHead className="text-right">{t("pages.documents.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {docs.map((d) => (
-              <TableRow key={d.id}>
+              <TableRow
+                key={d.id}
+                className="cursor-pointer"
+                onClick={(e) => {
+                  if (isInteractiveClick(e)) return;
+                  setDetail({
+                    id: d.id,
+                    name: d.name,
+                    typeLabel:
+                      PRODUCT_DOC_TYPE_LABEL[d.type as keyof typeof PRODUCT_DOC_TYPE_LABEL] ??
+                      d.type,
+                    fileName: d.fileName,
+                    uploadedBy: d.uploadedBy,
+                    uploadedAt: d.uploadedAt,
+                    content: d.content,
+                  });
+                }}
+              >
                 <TableCell>
                   <span className="inline-flex items-center gap-1.5 text-sm font-medium">
                     <FileText className="size-4 text-muted-foreground" />
@@ -136,6 +184,12 @@ function ProductDocuments() {
           </TableBody>
         </Table>
       </div>
+
+      <EntityDocumentDialog
+        doc={detail}
+        open={detail !== null}
+        onOpenChange={(o) => !o && setDetail(null)}
+      />
     </AppShell>
   );
 }

@@ -1,7 +1,8 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
+import { Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/dhi/AppShell";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -11,9 +12,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { loadSnapshot, useStore } from "@/lib/dhi-store";
+import { isInteractiveClick } from "@/lib/clickable-row";
 import { products as seedProducts, PROJECT_STATUS_LABEL } from "@/lib/dhi-data";
 import { cn } from "@/lib/utils";
 import { productTabs } from "@/lib/dhi-nav";
+import { projectProgress } from "@/lib/progress";
+import { canCreateProject } from "@/lib/role-protection";
 import { useI18n } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 
@@ -39,7 +43,8 @@ const STATUS_TONE: Record<string, string> = {
 function ProductProjects() {
   const { productId } = Route.useParams();
   const { t } = useI18n();
-  const { products, projects, campaigns } = useStore();
+  const navigate = useNavigate();
+  const { products, projects, campaigns, tests } = useStore();
   const product = products.find((p) => p.id === productId);
   const [search, setSearch] = useState("");
 
@@ -59,8 +64,22 @@ function ProductProjects() {
     <AppShell
       title={product?.name ?? t("nav.product_projects")}
       subtitle={t("nav.product_projects")}
-      breadcrumb={[t("nav.qualite"), t("nav.produits"), product?.name ?? "", t("nav.product_projects")]}
+      breadcrumb={[
+        t("nav.qualite"),
+        t("nav.produits"),
+        product?.name ?? "",
+        t("nav.product_projects"),
+      ]}
       tabs={productTabs(productId)}
+      actions={
+        canCreateProject() ? (
+          <Link to="/projets/ajouter" search={{ productId }}>
+            <Button size="sm">
+              <Plus className="size-4" /> {t("pages.projects.new_project")}
+            </Button>
+          </Link>
+        ) : undefined
+      }
     >
       <div className="panel">
         <div className="border-b border-border px-4 py-3">
@@ -85,10 +104,16 @@ function ProductProjects() {
           <TableBody>
             {prodProjects.map((pr) => {
               const prCampaigns = campaigns.filter((c) => c.projectId === pr.id);
-              const executed = prCampaigns.filter((c) => c.status !== "planifiee").length;
-              const rate = prCampaigns.length > 0 ? Math.round((executed / prCampaigns.length) * 100) : 0;
+              const rate = projectProgress(tests, campaigns, pr.id);
               return (
-                <TableRow key={pr.id}>
+                <TableRow
+                  key={pr.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (isInteractiveClick(e)) return;
+                    void navigate({ to: "/projets/$projectId", params: { projectId: pr.id } });
+                  }}
+                >
                   <TableCell>
                     <Link
                       to="/projets/$projectId"
